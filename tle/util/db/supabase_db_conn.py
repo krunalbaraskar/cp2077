@@ -848,3 +848,65 @@ class SupabaseDbConn:
         self.client.table('rated_vc_settings').delete().eq(
             'guild_id', str(guild_id)
         ).execute()
+
+    def get_ongoing_rated_vc_ids(self):
+        """Get IDs of all ongoing rated VCs."""
+        result = self.client.table('rated_vcs').select('id').eq(
+            'status', RatedVC.ONGOING
+        ).execute()
+        return [r['id'] for r in result.data]
+
+    def get_rated_vc_user_ids(self, vc_id):
+        """Get user IDs participating in a rated VC."""
+        result = self.client.table('rated_vc_users').select('user_id').eq(
+            'vc_id', vc_id
+        ).execute()
+        return [r['user_id'] for r in result.data]
+
+    def update_vc_rating(self, vc_id, user_id, rating):
+        """Update a user's rating in a rated VC."""
+        self.client.table('rated_vc_users').upsert({
+            'vc_id': vc_id,
+            'user_id': str(user_id),
+            'rating': rating
+        }).execute()
+
+    def get_vc_rating(self, user_id, default_if_not_exist=True):
+        """Get a user's current VC rating."""
+        result = self.client.table('rated_vc_users').select(
+            'vc_id, rating'
+        ).eq('user_id', str(user_id)).not_.is_(
+            'rating', 'null'
+        ).order('vc_id', desc=True).limit(1).execute()
+        
+        if result.data:
+            return result.data[0]['rating']
+        if default_if_not_exist:
+            return _DEFAULT_VC_RATING
+        return None
+
+    def get_vc_rating_history(self, user_id):
+        """Get VC rating history for a user."""
+        result = self.client.table('rated_vc_users').select(
+            'vc_id, rating'
+        ).eq('user_id', str(user_id)).not_.is_(
+            'rating', 'null'
+        ).execute()
+        return [_make_row(r, ['vc_id', 'rating']) for r in result.data]
+
+    def remove_last_ratedvc_participation(self, user_id):
+        """Remove a user's last rated VC participation."""
+        # Get the last VC
+        last_result = self.client.table('rated_vc_users').select('vc_id').eq(
+            'user_id', str(user_id)
+        ).order('vc_id', desc=True).limit(1).execute()
+        
+        if not last_result.data:
+            return 0
+        
+        vc_id = last_result.data[0]['vc_id']
+        result = self.client.table('rated_vc_users').delete().eq(
+            'user_id', str(user_id)
+        ).eq('vc_id', vc_id).execute()
+        return len(result.data)
+
