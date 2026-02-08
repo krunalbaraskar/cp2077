@@ -1,3 +1,13 @@
+---
+title: CP2077 Discord Bot
+emoji: 🤖
+colorFrom: purple
+colorTo: blue
+sdk: docker
+app_file: app.py
+pinned: false
+---
+
 # TLE ― The Competitive-Programming Discord Bot
 
 TLE is a feature-packed Discord bot aimed at competitive programmers
