@@ -8,7 +8,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gobject-introspection python3-gi python3-gi-cairo python3-cairo \
     libjpeg-dev zlib1g-dev \
     python3-pip \
-    && rm -rf /var/lib/apt/lists/*
+    dnsutils iputils-ping \
+    && rm -rf /var/lib/apt/lists/* \
+    && echo "nameserver 8.8.8.8" > /etc/resolv.conf \
+    && echo "nameserver 1.1.1.1" >> /etc/resolv.conf
 
 ENV FONTCONFIG_FILE=/bot/extra/fonts.conf
 ENV PYTHONUNBUFFERED=1

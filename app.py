@@ -40,10 +40,57 @@ def run_health_server():
 
 
 if __name__ == '__main__':
+    import time
+    import socket
+    
     # Start health check server in background thread
     health_thread = threading.Thread(target=run_health_server, daemon=True)
     health_thread.start()
 
-    # Run the Discord bot (this blocks)
-    from tle.__main__ import main
-    main()
+    # Configure DNS at runtime (backup for container restarts)
+    try:
+        with open('/etc/resolv.conf', 'w') as f:
+            f.write("nameserver 8.8.8.8\n")
+            f.write("nameserver 1.1.1.1\n")
+            f.write("nameserver 8.8.4.4\n")
+        print("DNS configured successfully")
+    except PermissionError:
+        print("Could not write DNS config (running as non-root)")
+    except Exception as e:
+        print(f"DNS config warning: {e}")
+
+    # Test DNS resolution before starting bot
+    def test_dns(host="discord.com", retries=5):
+        for attempt in range(retries):
+            try:
+                result = socket.gethostbyname(host)
+                print(f"DNS resolution successful: {host} -> {result}")
+                return True
+            except socket.gaierror as e:
+                wait_time = 2 ** attempt  # Exponential backoff: 1, 2, 4, 8, 16 seconds
+                print(f"DNS resolution attempt {attempt + 1}/{retries} failed: {e}")
+                if attempt < retries - 1:
+                    print(f"Retrying in {wait_time} seconds...")
+                    time.sleep(wait_time)
+        return False
+
+    # Run the Discord bot with retry logic
+    max_retries = 5
+    for attempt in range(max_retries):
+        try:
+            if not test_dns():
+                print("DNS resolution failed after retries, but attempting bot start anyway...")
+            
+            from tle.__main__ import main
+            print(f"Starting Discord bot (attempt {attempt + 1}/{max_retries})...")
+            main()
+            break  # If main() exits normally, break
+        except Exception as e:
+            wait_time = 2 ** attempt
+            print(f"Bot startup failed (attempt {attempt + 1}/{max_retries}): {e}")
+            if attempt < max_retries - 1:
+                print(f"Retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
+            else:
+                print("Max retries reached. Exiting.")
+                raise
