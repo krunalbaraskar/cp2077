@@ -15,7 +15,7 @@ class HealthHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-type', 'text/html')
         self.end_headers()
-        self.wfile.write(b'''
+        self.wfile.write('''
         <!DOCTYPE html>
         <html>
         <head><title>CP2077 Bot Status</title></head>
@@ -25,7 +25,7 @@ class HealthHandler(BaseHTTPRequestHandler):
             <p>This is a Discord bot for competitive programming.</p>
         </body>
         </html>
-        ''')
+        '''.encode('utf-8'))
 
     def log_message(self, format, *args):
         pass  # Suppress HTTP request logging
