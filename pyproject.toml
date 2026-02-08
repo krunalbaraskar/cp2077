@@ -14,6 +14,8 @@ dependencies = [
   "seaborn",
   # Images
   "pillow",
+  "aiodns",
+  "brotli",
 ]
 
 [project.optional-dependencies]
