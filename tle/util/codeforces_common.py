@@ -48,7 +48,12 @@ async def initialize(nodb):
     if nodb:
         user_db = db.DummyUserDbConn()
     else:
-        user_db = db.UserDbConn(constants.USER_DB_FILE_PATH)
+        # Check if using Supabase (doesn't need file path)
+        import os
+        if os.environ.get("SUPABASE_URL") and os.environ.get("SUPABASE_KEY"):
+            user_db = db.UserDbConn()  # Supabase version, no file needed
+        else:
+            user_db = db.UserDbConn(constants.USER_DB_FILE_PATH)  # SQLite version
 
     cache_db = db.CacheDbConn(constants.CACHE_DB_FILE_PATH)
     cache2 = cache_system2.CacheSystem(cache_db)
