@@ -22,5 +22,8 @@ RUN /usr/bin/python3 -m pip install --break-system-packages --no-cache-dir .
 
 COPY . .
 
-# Run with system python3
-CMD ["/usr/bin/python3", "-m", "tle"]
+# Expose port for HF Spaces health check
+EXPOSE 7860
+
+# Run with app.py (includes health check server)
+CMD ["/usr/bin/python3", "app.py"]
