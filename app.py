@@ -13,15 +13,18 @@ class HealthHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         self.send_response(200)
-        self.send_header('Content-type', 'text/html')
+        self.send_header('Content-type', 'text/html; charset=utf-8')
         self.end_headers()
         self.wfile.write('''
         <!DOCTYPE html>
         <html>
-        <head><title>CP2077 Bot Status</title></head>
+        <head>
+            <meta charset="UTF-8">
+            <title>CP2077 Bot Status</title>
+        </head>
         <body style="font-family: Arial; padding: 20px; background: #1a1a2e; color: #eee;">
-            <h1>🤖 CP2077 Discord Bot</h1>
-            <p style="color: #4ade80;">✅ Bot is running!</p>
+            <h1>CP2077 Discord Bot</h1>
+            <p style="color: #4ade80;">Bot is running!</p>
             <p>This is a Discord bot for competitive programming.</p>
         </body>
         </html>
