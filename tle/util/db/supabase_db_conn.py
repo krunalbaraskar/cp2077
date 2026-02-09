@@ -307,9 +307,10 @@ class SupabaseDbConn:
         return result.data[0]['id'] if result.data else 0
 
     def cancel_duel(self, duelid, status):
+        # Only cancel if duel is still PENDING (like SQLite version)
         result = self.client.table('duel').update({
             'status': status
-        }).eq('id', duelid).execute()
+        }).eq('id', duelid).eq('status', Duel.PENDING).execute()
         return len(result.data)
 
     def invalidate_duel(self, duelid):
