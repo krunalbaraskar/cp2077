@@ -609,7 +609,7 @@ class Handles(commands.Cog):
         await ctx.send(embed=discord_common.embed_success('\n'.join(lines)))
 
     @handle.command(brief='Create missing rank roles with correct colors')
-    @commands.has_role(constants.TLE_ADMIN)
+    @commands.has_permissions(administrator=True)
     async def create_roles(self, ctx):
         """Creates missing roles for Codeforces ranks with correct colors."""
         created_count = 0
