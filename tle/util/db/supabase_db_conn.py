@@ -276,6 +276,8 @@ class SupabaseDbConn:
                              'problem_name', 'contest_id', 'p_index', 'type', 'nohandicap'])
 
     def create_duel(self, challenger, challengee, issue_time, prob, dtype, nohandicap=0):
+        # Ensure nohandicap is an integer (PostgreSQL expects integer, not boolean)
+        nohandicap_int = 1 if nohandicap else 0
         result = self.client.table('duel').insert({
             'challenger': challenger,
             'challengee': challengee,
@@ -285,7 +287,7 @@ class SupabaseDbConn:
             'p_index': prob.index,
             'status': Duel.PENDING,
             'type': dtype,
-            'nohandicap': nohandicap
+            'nohandicap': nohandicap_int
         }).execute()
         return result.data[0]['id'] if result.data else 0
 
@@ -389,6 +391,115 @@ class SupabaseDbConn:
         ).execute()
         return [_make_row(r, ['challenger', 'challengee', 'winner', 'finish_time']) 
                 for r in result.data]
+
+    def get_duels(self, userid):
+        """Get all completed duels for a user."""
+        result = self.client.table('duel').select(
+            'id, start_time, finish_time, problem_name, challenger, challengee, winner'
+        ).or_(f'challenger.eq.{userid},challengee.eq.{userid}').eq(
+            'status', Duel.COMPLETE
+        ).order('start_time', desc=True).execute()
+        return [_make_row(r, ['id', 'start_time', 'finish_time', 'problem_name', 
+                              'challenger', 'challengee', 'winner']) for r in result.data]
+
+    def update_duel_rating(self, userid, delta):
+        """Update a user's duel rating by delta."""
+        current = self.get_duel_rating(userid)
+        if current is None:
+            return 0
+        new_rating = current + delta
+        return self.set_duel_rating(userid, new_rating)
+
+    def get_num_duel_completed(self, userid):
+        """Get number of completed duels for a user."""
+        result = self.client.table('duel').select('id', count='exact').or_(
+            f'challenger.eq.{userid},challengee.eq.{userid}'
+        ).eq('status', Duel.COMPLETE).execute()
+        return result.count or 0
+
+    def get_num_duel_draws(self, userid):
+        """Get number of draw duels for a user."""
+        result = self.client.table('duel').select('id', count='exact').or_(
+            f'challenger.eq.{userid},challengee.eq.{userid}'
+        ).eq('winner', Winner.DRAW).execute()
+        return result.count or 0
+
+    def get_num_duel_losses(self, userid):
+        """Get number of lost duels for a user."""
+        # As challenger, lost if winner is CHALLENGEE
+        as_challenger = self.client.table('duel').select('id', count='exact').eq(
+            'challenger', userid
+        ).eq('status', Duel.COMPLETE).eq('winner', Winner.CHALLENGEE).execute()
+        # As challengee, lost if winner is CHALLENGER
+        as_challengee = self.client.table('duel').select('id', count='exact').eq(
+            'challengee', userid
+        ).eq('status', Duel.COMPLETE).eq('winner', Winner.CHALLENGER).execute()
+        return (as_challenger.count or 0) + (as_challengee.count or 0)
+
+    def get_num_duel_declined(self, userid):
+        """Get number of duels declined by user (as challengee)."""
+        result = self.client.table('duel').select('id', count='exact').eq(
+            'challengee', userid
+        ).eq('status', Duel.DECLINED).execute()
+        return result.count or 0
+
+    def get_num_duel_rdeclined(self, userid):
+        """Get number of duels where user was declined (as challenger)."""
+        result = self.client.table('duel').select('id', count='exact').eq(
+            'challenger', userid
+        ).eq('status', Duel.DECLINED).execute()
+        return result.count or 0
+
+    def check_multiplayer_duel_participant(self, user_id):
+        """Check if user is in any pending or ongoing multi-player duel."""
+        result = self.client.table('multiplayer_duel_participant').select(
+            'duel_id, status'
+        ).eq('user_id', user_id).neq('status', ParticipantStatus.DECLINED).execute()
+        
+        for r in result.data:
+            duel = self.client.table('multiplayer_duel').select('status').eq(
+                'id', r['duel_id']
+            ).in_('status', [Duel.PENDING, Duel.ONGOING]).execute()
+            if duel.data:
+                return _make_row({'duel_id': r['duel_id'], 'status': duel.data[0]['status']}, 
+                                 ['duel_id', 'status'])
+        return None
+
+    def update_participant_status(self, duel_id, user_id, status):
+        """Update a participant's status (INVITED, ACCEPTED, DECLINED)."""
+        result = self.client.table('multiplayer_duel_participant').update({
+            'status': status
+        }).eq('duel_id', duel_id).eq('user_id', user_id).execute()
+        return len(result.data)
+
+    def get_multiplayer_duel_by_user(self, user_id):
+        """Get pending/ongoing multi-player duel for a user."""
+        result = self.client.table('multiplayer_duel_participant').select(
+            'duel_id'
+        ).eq('user_id', user_id).neq('status', ParticipantStatus.DECLINED).execute()
+        
+        for r in result.data:
+            duel = self.client.table('multiplayer_duel').select('*').eq(
+                'id', r['duel_id']
+            ).in_('status', [Duel.PENDING, Duel.ONGOING]).execute()
+            if duel.data:
+                return _make_row(duel.data[0])
+        return None
+
+    def check_all_accepted(self, duel_id):
+        """Check if all participants have accepted the duel."""
+        result = self.client.table('multiplayer_duel_participant').select(
+            'user_id', count='exact'
+        ).eq('duel_id', duel_id).eq('status', ParticipantStatus.INVITED).execute()
+        return (result.count or 0) == 0
+
+    def update_participant_progress(self, duel_id, user_id, problems_solved, total_time):
+        """Update participant's progress (problems solved and total time)."""
+        result = self.client.table('multiplayer_duel_participant').update({
+            'problems_solved': problems_solved,
+            'total_time': total_time
+        }).eq('duel_id', duel_id).eq('user_id', user_id).execute()
+        return len(result.data)
 
     # ==================== Challenge/Gitgud Methods ====================
 
@@ -664,6 +775,8 @@ class SupabaseDbConn:
 
     def create_multiplayer_duel(self, creator_id, guild_id, issue_time, num_problems, 
                                  rating, dtype, nohandicap=0):
+        # Ensure nohandicap is an integer (PostgreSQL expects integer, not boolean)
+        nohandicap_int = 1 if nohandicap else 0
         result = self.client.table('multiplayer_duel').insert({
             'creator_id': creator_id,
             'guild_id': str(guild_id),
@@ -672,7 +785,7 @@ class SupabaseDbConn:
             'rating': rating,
             'status': Duel.PENDING,
             'type': dtype,
-            'nohandicap': nohandicap
+            'nohandicap': nohandicap_int
         }).execute()
         return result.data[0]['id'] if result.data else 0
 
