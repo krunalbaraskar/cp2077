@@ -222,6 +222,13 @@ class SupabaseDbConn:
         result = self.client.table('duelist').select('user_id, rating').execute()
         return [(r['user_id'], r['rating']) for r in result.data]
 
+    def is_duelist(self, userid):
+        """Check if user is registered as a duelist."""
+        result = self.client.table('duelist').select('user_id').eq(
+            'user_id', userid
+        ).execute()
+        return bool(result.data)
+
     # ==================== 1v1 Duel Methods ====================
 
     def check_duel_challenge(self, userid):
