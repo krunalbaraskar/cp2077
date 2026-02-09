@@ -2,15 +2,14 @@
 Supabase database connection for TLE Discord bot.
 Replaces SQLite with Supabase (PostgreSQL) for persistent storage.
 """
-import os
 import logging
+import os
 from collections import namedtuple
 from enum import IntEnum
 
 from discord.ext import commands
-from supabase import create_client, Client
+from supabase import Client, create_client
 
-from tle import constants
 from tle.util import codeforces_api as cf, codeforces_common as cf_common
 
 logger = logging.getLogger(__name__)
@@ -87,12 +86,14 @@ def _make_row(data, fields=None):
 
 class SupabaseDbConn:
     """Supabase database connection - drop-in replacement for UserDbConn."""
-    
+
     def __init__(self):
         url = os.environ.get("SUPABASE_URL")
         key = os.environ.get("SUPABASE_KEY")
         if not url or not key:
-            raise ValueError("SUPABASE_URL and SUPABASE_KEY environment variables required")
+            raise ValueError(
+                "SUPABASE_URL and SUPABASE_KEY environment variables required"
+            )
         self.client: Client = create_client(url, key)
         logger.info("Connected to Supabase")
 
@@ -103,10 +104,10 @@ class SupabaseDbConn:
         existing = self.client.table('user_handle').select('user_id').eq(
             'guild_id', str(guild_id)
         ).eq('handle', handle).execute()
-        
+
         if existing.data and str(existing.data[0]['user_id']) != str(user_id):
             raise UniqueConstraintFailed
-        
+
         result = self.client.table('user_handle').upsert({
             'user_id': str(user_id),
             'guild_id': str(guild_id),
@@ -189,7 +190,7 @@ class SupabaseDbConn:
         handles_result = self.client.table('user_handle').select(
             'user_id, handle'
         ).eq('guild_id', str(guild_id)).eq('active', True).execute()
-        
+
         users = []
         for h in handles_result.data:
             cf_user = self.fetch_cf_user(h['handle'])
@@ -241,7 +242,9 @@ class SupabaseDbConn:
         result = self.client.table('duel').select(
             'id, challenger, problem_name'
         ).eq('challengee', challengee).eq('status', Duel.PENDING).execute()
-        return _make_row(result.data[0], ['id', 'challenger', 'problem_name']) if result.data else None
+        if result.data:
+            return _make_row(result.data[0], ['id', 'challenger', 'problem_name'])
+        return None
 
     def check_duel_decline(self, challengee):
         result = self.client.table('duel').select('id, challenger').eq(
@@ -253,7 +256,9 @@ class SupabaseDbConn:
         result = self.client.table('duel').select('id, challengee').eq(
             'challenger', challenger
         ).eq('status', Duel.PENDING).execute()
-        return _make_row(result.data[0], ['id', 'challengee']) if result.data else None
+        if result.data:
+            return _make_row(result.data[0], ['id', 'challengee'])
+        return None
 
     def check_duel_draw(self, userid):
         result = self.client.table('duel').select(
@@ -261,22 +266,32 @@ class SupabaseDbConn:
         ).or_(f'challenger.eq.{userid},challengee.eq.{userid}').eq(
             'status', Duel.ONGOING
         ).execute()
-        return _make_row(result.data[0], ['id', 'challenger', 'challengee', 'start_time']) if result.data else None
+        if result.data:
+            return _make_row(
+                result.data[0], ['id', 'challenger', 'challengee', 'start_time']
+            )
+        return None
 
     def check_duel_complete(self, userid):
         result = self.client.table('duel').select(
-            'id, challenger, challengee, start_time, problem_name, contest_id, p_index, type, nohandicap'
+            'id, challenger, challengee, start_time, '
+            'problem_name, contest_id, p_index, type, nohandicap'
         ).or_(f'challenger.eq.{userid},challengee.eq.{userid}').eq(
             'status', Duel.ONGOING
         ).execute()
         if not result.data:
             return None
         r = result.data[0]
-        return _make_row(r, ['id', 'challenger', 'challengee', 'start_time', 
-                             'problem_name', 'contest_id', 'p_index', 'type', 'nohandicap'])
+        fields = [
+            'id', 'challenger', 'challengee', 'start_time',
+            'problem_name', 'contest_id', 'p_index', 'type', 'nohandicap'
+        ]
+        return _make_row(r, fields)
 
-    def create_duel(self, challenger, challengee, issue_time, prob, dtype, nohandicap=0):
-        # Ensure nohandicap is an integer (PostgreSQL expects integer, not boolean)
+    def create_duel(
+        self, challenger, challengee, issue_time, prob, dtype, nohandicap=0
+    ):
+        # Ensure nohandicap is an integer (PostgreSQL expects integer)
         nohandicap_int = 1 if nohandicap else 0
         result = self.client.table('duel').insert({
             'challenger': challenger,
@@ -307,7 +322,7 @@ class SupabaseDbConn:
         }).eq('id', duelid).eq('status', Duel.PENDING).execute()
         return len(result.data)
 
-    def complete_duel(self, duelid, winner, finish_time, winner_id=None, loser_id=None, 
+    def complete_duel(self, duelid, winner, finish_time, winner_id=None, loser_id=None,
                       delta=None, dtype=None):
         update_data = {
             'finish_time': finish_time,
@@ -316,7 +331,9 @@ class SupabaseDbConn:
         }
         if dtype is not None:
             update_data['type'] = dtype
-        result = self.client.table('duel').update(update_data).eq('id', duelid).execute()
+        result = self.client.table('duel').update(
+            update_data
+        ).eq('id', duelid).execute()
         return len(result.data)
 
     def get_duel_status(self, duelid):
@@ -333,22 +350,22 @@ class SupabaseDbConn:
         as_challenger = self.client.table('duel').select('id', count='exact').eq(
             'challenger', userid
         ).eq('status', Duel.COMPLETE).eq('winner', Winner.CHALLENGER).execute()
-        
+
         as_challengee = self.client.table('duel').select('id', count='exact').eq(
             'challengee', userid
         ).eq('status', Duel.COMPLETE).eq('winner', Winner.CHALLENGEE).execute()
-        
+
         return (as_challenger.count or 0) + (as_challengee.count or 0)
 
     def get_duel_losses(self, userid):
         as_challenger = self.client.table('duel').select('id', count='exact').eq(
             'challenger', userid
         ).eq('status', Duel.COMPLETE).eq('winner', Winner.CHALLENGEE).execute()
-        
+
         as_challengee = self.client.table('duel').select('id', count='exact').eq(
             'challengee', userid
         ).eq('status', Duel.COMPLETE).eq('winner', Winner.CHALLENGER).execute()
-        
+
         return (as_challenger.count or 0) + (as_challengee.count or 0)
 
     def get_duel_draws(self, userid):
@@ -389,18 +406,20 @@ class SupabaseDbConn:
         ).eq('status', Duel.COMPLETE).eq('type', DuelType.OFFICIAL).order(
             'finish_time'
         ).execute()
-        return [_make_row(r, ['challenger', 'challengee', 'winner', 'finish_time']) 
+        return [_make_row(r, ['challenger', 'challengee', 'winner', 'finish_time'])
                 for r in result.data]
 
     def get_duels(self, userid):
         """Get all completed duels for a user."""
         result = self.client.table('duel').select(
-            'id, start_time, finish_time, problem_name, challenger, challengee, winner'
+            'id, start_time, finish_time, problem_name, '
+            'challenger, challengee, winner'
         ).or_(f'challenger.eq.{userid},challengee.eq.{userid}').eq(
             'status', Duel.COMPLETE
         ).order('start_time', desc=True).execute()
-        return [_make_row(r, ['id', 'start_time', 'finish_time', 'problem_name', 
-                              'challenger', 'challengee', 'winner']) for r in result.data]
+        fields = ['id', 'start_time', 'finish_time', 'problem_name',
+                  'challenger', 'challengee', 'winner']
+        return [_make_row(r, fields) for r in result.data]
 
     def update_duel_rating(self, userid, delta):
         """Update a user's duel rating by delta."""
@@ -455,14 +474,16 @@ class SupabaseDbConn:
         result = self.client.table('multiplayer_duel_participant').select(
             'duel_id, status'
         ).eq('user_id', user_id).neq('status', ParticipantStatus.DECLINED).execute()
-        
+
         for r in result.data:
             duel = self.client.table('multiplayer_duel').select('status').eq(
                 'id', r['duel_id']
             ).in_('status', [Duel.PENDING, Duel.ONGOING]).execute()
             if duel.data:
-                return _make_row({'duel_id': r['duel_id'], 'status': duel.data[0]['status']}, 
-                                 ['duel_id', 'status'])
+                return _make_row(
+                    {'duel_id': r['duel_id'], 'status': duel.data[0]['status']},
+                    ['duel_id', 'status']
+                )
         return None
 
     def update_participant_status(self, duel_id, user_id, status):
@@ -477,7 +498,7 @@ class SupabaseDbConn:
         result = self.client.table('multiplayer_duel_participant').select(
             'duel_id'
         ).eq('user_id', user_id).neq('status', ParticipantStatus.DECLINED).execute()
-        
+
         for r in result.data:
             duel = self.client.table('multiplayer_duel').select('*').eq(
                 'id', r['duel_id']
@@ -493,8 +514,10 @@ class SupabaseDbConn:
         ).eq('duel_id', duel_id).eq('status', ParticipantStatus.INVITED).execute()
         return (result.count or 0) == 0
 
-    def update_participant_progress(self, duel_id, user_id, problems_solved, total_time):
-        """Update participant's progress (problems solved and total time)."""
+    def update_participant_progress(
+        self, duel_id, user_id, problems_solved, total_time
+    ):
+        """Update participant's progress."""
         result = self.client.table('multiplayer_duel_participant').update({
             'problems_solved': problems_solved,
             'total_time': total_time
@@ -514,12 +537,12 @@ class SupabaseDbConn:
             'rating_delta': delta,
             'status': Gitgud.GITGUD
         }).execute()
-        
+
         if not challenge_result.data:
             return 0
-        
+
         challenge_id = challenge_result.data[0]['id']
-        
+
         # Ensure user_challenge exists
         self.client.table('user_challenge').upsert({
             'user_id': str(user_id),
@@ -527,42 +550,42 @@ class SupabaseDbConn:
             'num_completed': 0,
             'num_skipped': 0
         }, on_conflict='user_id').execute()
-        
+
         # Update only if no active challenge
         existing = self.client.table('user_challenge').select(
             'active_challenge_id'
         ).eq('user_id', str(user_id)).execute()
-        
+
         if existing.data and existing.data[0]['active_challenge_id'] is not None:
             return 0
-        
+
         self.client.table('user_challenge').update({
             'active_challenge_id': challenge_id,
             'issue_time': issue_time
         }).eq('user_id', str(user_id)).execute()
-        
+
         return 1
 
     def check_challenge(self, user_id):
         uc = self.client.table('user_challenge').select(
             'active_challenge_id, issue_time'
         ).eq('user_id', str(user_id)).execute()
-        
+
         if not uc.data or uc.data[0]['active_challenge_id'] is None:
             return None
-        
+
         c_id = uc.data[0]['active_challenge_id']
         issue_time = uc.data[0]['issue_time']
-        
+
         challenge = self.client.table('challenge').select(
             'problem_name, contest_id, p_index, rating_delta'
         ).eq('id', c_id).execute()
-        
+
         if not challenge.data:
             return None
-        
+
         c = challenge.data[0]
-        return (c_id, issue_time, c['problem_name'], c['contest_id'], 
+        return (c_id, issue_time, c['problem_name'], c['contest_id'],
                 c['p_index'], c['rating_delta'])
 
     def complete_challenge(self, user_id, challenge_id, finish_time, delta):
@@ -571,12 +594,12 @@ class SupabaseDbConn:
             'finish_time': finish_time,
             'status': Gitgud.GOTGUD
         }).eq('id', challenge_id).eq('status', Gitgud.GITGUD).execute()
-        
+
         # Update user stats
         uc = self.client.table('user_challenge').select('score, num_completed').eq(
             'user_id', str(user_id)
         ).execute()
-        
+
         if uc.data:
             self.client.table('user_challenge').update({
                 'score': uc.data[0]['score'] + delta,
@@ -584,7 +607,7 @@ class SupabaseDbConn:
                 'active_challenge_id': None,
                 'issue_time': None
             }).eq('user_id', str(user_id)).execute()
-        
+
         return 1
 
     def skip_challenge(self, user_id, challenge_id, status):
@@ -592,11 +615,11 @@ class SupabaseDbConn:
             'active_challenge_id': None,
             'issue_time': None
         }).eq('user_id', str(user_id)).execute()
-        
+
         self.client.table('challenge').update({
             'status': status
         }).eq('id', challenge_id).eq('status', Gitgud.GITGUD).execute()
-        
+
         return 1
 
     def get_gudgitters(self):
@@ -617,12 +640,13 @@ class SupabaseDbConn:
 
     def gitlog(self, user_id):
         result = self.client.table('challenge').select(
-            'issue_time, finish_time, problem_name, contest_id, p_index, rating_delta, status'
+            'issue_time, finish_time, problem_name, '
+            'contest_id, p_index, rating_delta, status'
         ).eq('user_id', str(user_id)).neq(
             'status', Gitgud.FORCED_NOGUD
         ).order('issue_time', desc=True).execute()
-        return [_make_row(r, ['issue_time', 'finish_time', 'problem_name', 
-                              'contest_id', 'p_index', 'rating_delta', 'status']) 
+        return [_make_row(r, ['issue_time', 'finish_time', 'problem_name',
+                              'contest_id', 'p_index', 'rating_delta', 'status'])
                 for r in result.data]
 
     # ==================== Reminder Methods ====================
@@ -631,7 +655,11 @@ class SupabaseDbConn:
         result = self.client.table('reminder').select(
             'channel_id, role_id, before'
         ).eq('guild_id', str(guild_id)).execute()
-        return _make_row(result.data[0], ['channel_id', 'role_id', 'before']) if result.data else None
+        if result.data:
+            return _make_row(
+                result.data[0], ['channel_id', 'role_id', 'before']
+            )
+        return None
 
     def set_reminder_settings(self, guild_id, channel_id, role_id, before):
         self.client.table('reminder').upsert({
@@ -689,18 +717,18 @@ class SupabaseDbConn:
         cfg = self.client.table('starboard_config_v1').select('channel_id').eq(
             'guild_id', str(guild_id)
         ).eq('emoji', emoji).execute()
-        
+
         if not cfg.data:
             return None
-        
+
         emo = self.client.table('starboard_emoji_v1').select('threshold, color').eq(
             'guild_id', str(guild_id)
         ).eq('emoji', emoji).execute()
-        
+
         if not emo.data:
             return None
-        
-        return (int(cfg.data[0]['channel_id']), int(emo.data[0]['threshold']), 
+
+        return (int(cfg.data[0]['channel_id']), int(emo.data[0]['threshold']),
                 int(emo.data[0]['color']))
 
     def add_starboard_emoji(self, guild_id, emoji, threshold, color):
@@ -758,7 +786,9 @@ class SupabaseDbConn:
         ).eq('emoji', emoji).execute()
         return bool(result.data)
 
-    def remove_starboard_message(self, *, original_msg_id=None, emoji=None, starboard_msg_id=None):
+    def remove_starboard_message(
+        self, *, original_msg_id=None, emoji=None, starboard_msg_id=None
+    ):
         if original_msg_id is not None and emoji is not None:
             result = self.client.table('starboard_message_v1').delete().eq(
                 'original_msg_id', str(original_msg_id)
@@ -773,7 +803,7 @@ class SupabaseDbConn:
 
     # ==================== Multiplayer Duel Methods ====================
 
-    def create_multiplayer_duel(self, creator_id, guild_id, issue_time, num_problems, 
+    def create_multiplayer_duel(self, creator_id, guild_id, issue_time, num_problems,
                                  rating, dtype, nohandicap=0):
         # Ensure nohandicap is an integer (PostgreSQL expects integer, not boolean)
         nohandicap_int = 1 if nohandicap else 0
@@ -789,7 +819,9 @@ class SupabaseDbConn:
         }).execute()
         return result.data[0]['id'] if result.data else 0
 
-    def add_multiplayer_participant(self, duel_id, user_id, status=ParticipantStatus.INVITED):
+    def add_multiplayer_participant(
+        self, duel_id, user_id, status=ParticipantStatus.INVITED
+    ):
         self.client.table('multiplayer_duel_participant').upsert({
             'duel_id': duel_id,
             'user_id': user_id,
@@ -815,14 +847,14 @@ class SupabaseDbConn:
         query = self.client.table('multiplayer_duel_participant').select(
             'duel_id'
         ).eq('user_id', user_id)
-        
+
         if status is not None:
             query = query.eq('status', status)
-        
+
         participant = query.execute()
         if not participant.data:
             return None
-        
+
         duel_id = participant.data[0]['duel_id']
         return self.get_multiplayer_duel(duel_id)
 
@@ -831,7 +863,7 @@ class SupabaseDbConn:
         result = self.client.table('multiplayer_duel_participant').select(
             'duel_id'
         ).eq('user_id', user_id).eq('status', ParticipantStatus.INVITED).execute()
-        
+
         for r in result.data:
             duel = self.client.table('multiplayer_duel').select('*').eq(
                 'id', r['duel_id']
@@ -879,8 +911,10 @@ class SupabaseDbConn:
             'status': Duel.COMPLETE
         }).eq('id', duel_id).execute()
 
-    def update_multiplayer_participant(self, duel_id, user_id, problems_solved=None, 
-                                        total_time=None, placement=None, rating_delta=None):
+    def update_multiplayer_participant(
+        self, duel_id, user_id, problems_solved=None,
+        total_time=None, placement=None, rating_delta=None
+    ):
         data = {}
         if problems_solved is not None:
             data['problems_solved'] = problems_solved
@@ -890,7 +924,7 @@ class SupabaseDbConn:
             data['placement'] = placement
         if rating_delta is not None:
             data['rating_delta'] = rating_delta
-        
+
         if data:
             self.client.table('multiplayer_duel_participant').update(data).eq(
                 'duel_id', duel_id
@@ -900,7 +934,7 @@ class SupabaseDbConn:
         result = self.client.table('multiplayer_duel_participant').select(
             'duel_id'
         ).eq('user_id', user_id).execute()
-        
+
         for r in result.data:
             duel = self.client.table('multiplayer_duel').select('*').eq(
                 'id', r['duel_id']
@@ -913,7 +947,7 @@ class SupabaseDbConn:
         result = self.client.table('multiplayer_duel_participant').select(
             'duel_id, problems_solved, total_time, placement, rating_delta'
         ).eq('user_id', user_id).execute()
-        
+
         history = []
         for r in result.data:
             duel = self.client.table('multiplayer_duel').select('*').eq(
@@ -1015,7 +1049,7 @@ class SupabaseDbConn:
         ).eq('user_id', str(user_id)).not_.is_(
             'rating', 'null'
         ).order('vc_id', desc=True).limit(1).execute()
-        
+
         if result.data:
             return result.data[0]['rating']
         if default_if_not_exist:
@@ -1037,10 +1071,10 @@ class SupabaseDbConn:
         last_result = self.client.table('rated_vc_users').select('vc_id').eq(
             'user_id', str(user_id)
         ).order('vc_id', desc=True).limit(1).execute()
-        
+
         if not last_result.data:
             return 0
-        
+
         vc_id = last_result.data[0]['vc_id']
         result = self.client.table('rated_vc_users').delete().eq(
             'user_id', str(user_id)
