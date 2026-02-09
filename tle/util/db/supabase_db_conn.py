@@ -373,6 +373,23 @@ class SupabaseDbConn:
         ).execute()
         return [_make_row(r) for r in result.data]
 
+    def get_duel_problem_names(self, userid):
+        """Get problem names from completed or invalid duels for a user."""
+        result = self.client.table('duel').select('problem_name').or_(
+            f'challenger.eq.{userid},challengee.eq.{userid}'
+        ).in_('status', [Duel.COMPLETE, Duel.INVALID]).execute()
+        return [(r['problem_name'],) for r in result.data]
+
+    def get_complete_official_duels(self):
+        """Get all completed official duels for rating calculation."""
+        result = self.client.table('duel').select(
+            'challenger, challengee, winner, finish_time'
+        ).eq('status', Duel.COMPLETE).eq('type', DuelType.OFFICIAL).order(
+            'finish_time'
+        ).execute()
+        return [_make_row(r, ['challenger', 'challengee', 'winner', 'finish_time']) 
+                for r in result.data]
+
     # ==================== Challenge/Gitgud Methods ====================
 
     def new_challenge(self, user_id, issue_time, prob, delta):
