@@ -471,19 +471,31 @@ class SupabaseDbConn:
 
     def check_multiplayer_duel_participant(self, user_id):
         """Check if user is in any pending or ongoing multi-player duel."""
+        # Get participant's active duel IDs in one query
         result = self.client.table('multiplayer_duel_participant').select(
-            'duel_id, status'
-        ).eq('user_id', user_id).neq('status', ParticipantStatus.DECLINED).execute()
+            'duel_id'
+        ).eq('user_id', user_id).neq(
+            'status', ParticipantStatus.DECLINED
+        ).execute()
 
-        for r in result.data:
-            duel = self.client.table('multiplayer_duel').select('status').eq(
-                'id', r['duel_id']
-            ).in_('status', [Duel.PENDING, Duel.ONGOING]).execute()
-            if duel.data:
-                return _make_row(
-                    {'duel_id': r['duel_id'], 'status': duel.data[0]['status']},
-                    ['duel_id', 'status']
-                )
+        if not result.data:
+            return None
+
+        # Get all duel IDs
+        duel_ids = [r['duel_id'] for r in result.data]
+
+        # Query all duels at once
+        duels = self.client.table('multiplayer_duel').select(
+            'id, status'
+        ).in_('id', duel_ids).in_(
+            'status', [Duel.PENDING, Duel.ONGOING]
+        ).limit(1).execute()
+
+        if duels.data:
+            return _make_row(
+                {'duel_id': duels.data[0]['id'], 'status': duels.data[0]['status']},
+                ['duel_id', 'status']
+            )
         return None
 
     def update_participant_status(self, duel_id, user_id, status):
@@ -497,14 +509,21 @@ class SupabaseDbConn:
         """Get pending/ongoing multi-player duel for a user."""
         result = self.client.table('multiplayer_duel_participant').select(
             'duel_id'
-        ).eq('user_id', user_id).neq('status', ParticipantStatus.DECLINED).execute()
+        ).eq('user_id', user_id).neq(
+            'status', ParticipantStatus.DECLINED
+        ).execute()
 
-        for r in result.data:
-            duel = self.client.table('multiplayer_duel').select('*').eq(
-                'id', r['duel_id']
-            ).in_('status', [Duel.PENDING, Duel.ONGOING]).execute()
-            if duel.data:
-                return _make_row(duel.data[0])
+        if not result.data:
+            return None
+
+        duel_ids = [r['duel_id'] for r in result.data]
+
+        duels = self.client.table('multiplayer_duel').select('*').in_(
+            'id', duel_ids
+        ).in_('status', [Duel.PENDING, Duel.ONGOING]).limit(1).execute()
+
+        if duels.data:
+            return _make_row(duels.data[0])
         return None
 
     def check_all_accepted(self, duel_id):
