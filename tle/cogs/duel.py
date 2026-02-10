@@ -1180,7 +1180,7 @@ class Dueling(commands.Cog):
             sub.problem.name
             for subs in submissions
             for sub in subs
-            if sub.verdict != 'COMPILATION_ERROR'
+            if sub.verdict == 'OK'
         }
         
         # Get previously seen problems in duels
