@@ -108,6 +108,49 @@ def apply_handicap(solve_time, handicap):
     return max(0, solve_time - handicap)
 
 
+def calculate_multi_delta(placement, solved_count, num_problems, solve_data, player_cf_rating):
+    """Calculate performance-based rating delta for a multiplayer duel.
+
+    Args:
+        placement: 1-indexed placement (1st, 2nd, etc.)
+        solved_count: number of problems solved
+        num_problems: total problems in the duel
+        solve_data: list of (problem_rating, solve_time_seconds) for each solved problem
+        player_cf_rating: player's current Codeforces rating
+
+    Returns:
+        int: rating delta (positive or negative)
+    """
+    if solved_count == 0:
+        # Zero solves: penalty scales with problem count
+        return -(10 + num_problems * 2)
+
+    # Per-problem delta
+    total = 0.0
+    for prob_rating, solve_seconds in solve_data:
+        rating_diff = prob_rating - player_cf_rating
+        base = 8 + (rating_diff / 100) * 3
+        base = max(2, min(20, base))  # clamp to [2, 20]
+
+        solve_minutes = solve_seconds / 60
+        speed_bonus = max(0, 3 - solve_minutes / 20)  # up to +3 for fast solves
+
+        per_problem = min(23, base + speed_bonus)
+        total += per_problem
+
+    # Placement bonus
+    if placement == 1:
+        total += 5
+    elif placement == 2:
+        total += 2
+    elif placement == 3:
+        total += 0
+    else:
+        total -= 2
+
+    return round(total)
+
+
 def complete_duel(
     duelid, guild_id, win_status, winner, loser, finish_time, score, dtype
 ):
@@ -1394,10 +1437,10 @@ class Dueling(commands.Cog):
         **Scoring:**
         Ranked by problems solved, ties broken by total time.
         
-        **Rating Changes (Official duels):**
-        • 1st: +40, 2nd: +20, 3rd: +10
-        • 4th+ with solves: -5
-        • 0 solved: -15
+        **Rating Changes (Performance-based):**
+        • Each solved problem: +2 to +23 based on difficulty vs your CF rating + speed
+        • Placement bonus: 1st +5, 2nd +2, 3rd +0, 4th+ -2
+        • 0 solved: penalty of -(10 + 2 × num_problems)
         """
         duel_info = cf_common.user_db.get_multiplayer_duel_by_user(ctx.author.id)
         if not duel_info:
@@ -1433,6 +1476,7 @@ class Dueling(commands.Cog):
             solved_count = 0
             total_time = 0.0
             has_testing = False
+            solve_data = []  # (problem_rating, solve_time_seconds) for each solved problem
             
             # prob_info tuple: (problem_name, contest_id, p_index, problem_order)
             for prob_info in problems:
@@ -1454,7 +1498,12 @@ class Dueling(commands.Cog):
                 if accepted_subs:
                     solved_count += 1
                     solve_time = min(sub.creationTimeSeconds for sub in accepted_subs)
-                    total_time += solve_time - duel_start_time
+                    solve_seconds = solve_time - duel_start_time
+                    total_time += solve_seconds
+                    # Get problem rating for delta calculation
+                    problem = cf_common.cache2.problem_cache.problem_by_name.get(prob_info[0])
+                    prob_rating = problem.rating if problem and problem.rating else duel_info[9]
+                    solve_data.append((prob_rating, solve_seconds))
             
             if has_testing:
                 await ctx.send(
@@ -1462,10 +1511,16 @@ class Dueling(commands.Cog):
                 )
                 return
             
+            # Get player's CF rating for delta calculation
+            cf_user = cf_common.user_db.fetch_cf_user(handle)
+            player_cf_rating = cf_user.rating if cf_user and cf_user.rating else 0
+            
             participant_results.append({
                 'user_id': user_id,
                 'solved': solved_count,
                 'time': total_time,
+                'solve_data': solve_data,
+                'cf_rating': player_cf_rating,
                 'member': ctx.guild.get_member(user_id)
             })
             
@@ -1480,18 +1535,14 @@ class Dueling(commands.Cog):
         for i, result in enumerate(participant_results):
             placement = i + 1
             
-            # Rating delta calculation (simple version)
             if duel_type == DuelType.OFFICIAL:
-                if placement == 1:
-                    delta = 40
-                elif placement == 2:
-                    delta = 20
-                elif placement == 3:
-                    delta = 10
-                elif result['solved'] > 0:
-                    delta = -5
-                else:
-                    delta = -15
+                delta = calculate_multi_delta(
+                    placement=placement,
+                    solved_count=result['solved'],
+                    num_problems=duel_num_problems,
+                    solve_data=result['solve_data'],
+                    player_cf_rating=result['cf_rating'],
+                )
             else:
                 delta = 0
             
