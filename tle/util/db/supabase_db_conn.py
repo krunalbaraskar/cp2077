@@ -925,11 +925,24 @@ class SupabaseDbConn:
             'status': status
         }).eq('id', duel_id).execute()
 
-    def complete_multiplayer_duel(self, duel_id, finish_time):
+    def complete_multiplayer_duel(self, duel_id, finish_time, placements_with_deltas, dtype):
         self.client.table('multiplayer_duel').update({
             'finish_time': finish_time,
             'status': Duel.COMPLETE
-        }).eq('id', duel_id).execute()
+        }).eq('id', duel_id).eq('status', Duel.ONGOING).execute()
+
+        # Update participant placements and rating deltas
+        for user_id, placement, rating_delta in placements_with_deltas:
+            self.client.table('multiplayer_duel_participant').update({
+                'placement': placement,
+                'rating_delta': rating_delta
+            }).eq('duel_id', duel_id).eq('user_id', user_id).execute()
+
+            # Update duelist rating if official
+            if dtype == DuelType.OFFICIAL:
+                self.update_duel_rating(user_id, rating_delta)
+
+        return 1
 
     def update_multiplayer_participant(
         self, duel_id, user_id, problems_solved=None,
