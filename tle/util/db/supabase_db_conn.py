@@ -903,16 +903,26 @@ class SupabaseDbConn:
         }).eq('duel_id', duel_id).eq('user_id', user_id).execute()
 
     def get_multiplayer_participants(self, duel_id):
-        result = self.client.table('multiplayer_duel_participant').select('*').eq(
+        result = self.client.table('multiplayer_duel_participant').select(
+            'user_id, status, problems_solved, total_time, placement, rating_delta'
+        ).eq(
             'duel_id', duel_id
-        ).execute()
-        return [_make_row(r) for r in result.data]
+        ).order('user_id').execute()
+        return [
+            _make_row(r, ['user_id', 'status', 'problems_solved', 'total_time', 'placement', 'rating_delta'])
+            for r in result.data
+        ]
 
     def get_multiplayer_problems(self, duel_id):
-        result = self.client.table('multiplayer_duel_problem').select('*').eq(
+        result = self.client.table('multiplayer_duel_problem').select(
+            'problem_name, contest_id, p_index, problem_order'
+        ).eq(
             'duel_id', duel_id
         ).order('problem_order').execute()
-        return [_make_row(r) for r in result.data]
+        return [
+            _make_row(r, ['problem_name', 'contest_id', 'p_index', 'problem_order'])
+            for r in result.data
+        ]
 
     def start_multiplayer_duel(self, duel_id, start_time):
         self.client.table('multiplayer_duel').update({
