@@ -934,7 +934,7 @@ class SupabaseDbConn:
     def cancel_multiplayer_duel(self, duel_id, status):
         result = self.client.table('multiplayer_duel').update({
             'status': status
-        }).eq('id', duel_id).execute()
+        }).eq('id', duel_id).eq('status', Duel.PENDING).execute()
         return len(result.data)
 
     def complete_multiplayer_duel(self, duel_id, finish_time, placements_with_deltas, dtype):
