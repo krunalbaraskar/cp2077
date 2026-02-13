@@ -942,6 +942,179 @@ class Handles(commands.Cog):
             embed=discord_common.embed_success('Roles updated successfully.')
         )
 
+    @commands.command(brief='Refresh ratings, show deltas, and update roles')
+    @commands.has_any_role(constants.TLE_ADMIN, constants.TLE_MODERATOR)
+    async def refreshratings(self, ctx):
+        """Fetches current Codeforces ratings for all registered handles,
+        displays rating deltas compared to cached data, and updates rank
+        roles if a rank change has occurred.
+        """
+        guild = ctx.guild
+
+        # 1. Get old cached data (user_id, cf.User) from DB
+        old_data = cf_common.user_db.get_cf_users_for_guild(guild.id)
+        old_rating_by_handle = {}
+        old_rank_by_handle = {}
+        for user_id, cf_user in old_data:
+            old_rating_by_handle[cf_user.handle] = cf_user.rating
+            old_rank_by_handle[cf_user.handle] = cf_user.rank
+
+        # 2. Get (user_id, handle) pairs and resolve to guild members
+        res = cf_common.user_db.get_handles_for_guild(guild.id)
+        member_handles = [
+            (guild.get_member(user_id), handle) for user_id, handle in res
+        ]
+        member_handles = [
+            (member, handle)
+            for member, handle in member_handles
+            if member is not None
+        ]
+        if not member_handles:
+            raise HandleCogError('No members with registered handles found.')
+
+        members, handles = zip(*member_handles, strict=False)
+
+        # 3. Fetch fresh ratings from CF API
+        await ctx.send(
+            embed=discord_common.embed_success(
+                f'Refreshing ratings for {len(handles)} handle(s)... please wait.'
+            )
+        )
+        new_users = await cf.user.info(handles=handles)
+
+        # 4. Update cache with fresh data
+        for user in new_users:
+            cf_common.user_db.cache_cf_user(user)
+
+        # 5. Build role mapping for rank updates
+        required_roles = {
+            user.rank.title for user in new_users if user.rank != cf.UNRATED_RANK
+        }
+        rank2role = {
+            role.name: role for role in guild.roles if role.name in required_roles
+        }
+        missing_roles = required_roles - rank2role.keys()
+        if missing_roles:
+            roles_str = ', '.join(f'`{role}`' for role in missing_roles)
+            plural = 's' if len(missing_roles) > 1 else ''
+            raise HandleCogError(
+                f'Role{plural} for rank{plural} {roles_str} not present in the server'
+            )
+
+        rank_to_role = {role.name: role for role in guild.roles}
+
+        def rating_to_displayable_rank(rating):
+            if rating is None:
+                return 'Unrated'
+            rank = cf.rating2rank(rating).title
+            role = rank_to_role.get(rank)
+            return role.mention if role else rank
+
+        # 6. Compute deltas, update roles, and build output
+        delta_entries = []  # (member, handle, old_rating, new_rating, delta)
+        rank_changes = []   # (member, handle, old_rank_str, new_rank_str)
+        roles_updated = 0
+
+        for member, user in zip(members, new_users, strict=False):
+            handle = user.handle
+            old_rating = old_rating_by_handle.get(handle)
+            new_rating = user.rating
+
+            # Compute delta
+            if old_rating is not None and new_rating is not None:
+                delta = new_rating - old_rating
+            elif new_rating is not None and old_rating is None:
+                delta = new_rating  # Was unrated, now rated
+            else:
+                delta = 0
+
+            delta_entries.append((member, handle, old_rating, new_rating, delta))
+
+            # Check for rank change and update role
+            old_rank = old_rank_by_handle.get(handle, cf.UNRATED_RANK)
+            new_rank = user.rank
+            if old_rank != new_rank:
+                old_rank_str = rating_to_displayable_rank(
+                    old_rating if old_rating is not None else None
+                )
+                new_rank_str = rating_to_displayable_rank(new_rating)
+                rank_changes.append((member, handle, old_rank_str, new_rank_str))
+
+            # Always update role to match current rank
+            role_to_assign = (
+                None if user.rank == cf.UNRATED_RANK else rank2role[user.rank.title]
+            )
+            await self.update_member_rank_role(
+                member, role_to_assign, reason='Rating refresh rank update'
+            )
+            roles_updated += 1
+
+        # 7. Sort by delta descending
+        delta_entries.sort(key=lambda e: e[4], reverse=True)
+
+        # 8. Build embeds
+        embeds = []
+
+        # Header embed
+        header_embed = discord.Embed(
+            title='Rating Refresh Results',
+            description=f'Refreshed ratings for **{len(handles)}** members.',
+        )
+        header_embed.set_author(name='📊 Rating Refresh')
+        embeds.append(header_embed)
+
+        # Rating deltas embed(s)
+        delta_lines = []
+        for member, handle, old_rating, new_rating, delta in delta_entries:
+            old_str = str(old_rating) if old_rating is not None else 'Unrated'
+            new_str = str(new_rating) if new_rating is not None else 'Unrated'
+            delta_sign = f'**{delta:+}**' if delta != 0 else '±0'
+            line = (
+                f'{member.mention}'
+                f' [{handle}]({cf.PROFILE_BASE_URL}{handle}):'
+                f' {old_str} \N{HORIZONTAL BAR} {delta_sign}'
+                f' \N{LONG RIGHTWARDS ARROW} {new_str}'
+            )
+            delta_lines.append(line)
+
+        if delta_lines:
+            for chunk in paginator.chunkify(
+                delta_lines, _MAX_RATING_CHANGES_PER_EMBED
+            ):
+                embed = discord.Embed(description='\n'.join(chunk))
+                embed.set_author(name='Rating Deltas')
+                embeds.append(embed)
+        else:
+            embed = discord.Embed(description='No rating data available.')
+            embed.set_author(name='Rating Deltas')
+            embeds.append(embed)
+
+        # Rank changes embed
+        if rank_changes:
+            rank_lines = []
+            for member, handle, old_rank_str, new_rank_str in rank_changes:
+                line = (
+                    f'{member.mention}'
+                    f' [{handle}]({cf.PROFILE_BASE_URL}{handle}):'
+                    f' {old_rank_str} \N{LONG RIGHTWARDS ARROW} {new_rank_str}'
+                )
+                rank_lines.append(line)
+            for chunk in paginator.chunkify(
+                rank_lines, _MAX_RATING_CHANGES_PER_EMBED
+            ):
+                embed = discord.Embed(description='\n'.join(chunk))
+                embed.set_author(name='🏅 Rank Changes')
+                embeds.append(embed)
+        else:
+            embed = discord.Embed(description='No rank changes.')
+            embed.set_author(name='🏅 Rank Changes')
+            embeds.append(embed)
+
+        discord_common.set_same_cf_color(embeds)
+
+        for embed in embeds:
+            await ctx.send(embed=embed)
+
     @roleupdate.command(brief='Enable or disable auto role updates', usage='on|off')
     @commands.has_any_role(constants.TLE_ADMIN, constants.TLE_MODERATOR)
     async def auto(self, ctx, arg):
