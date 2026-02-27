@@ -10,6 +10,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
+# Configure DNS (must be done as root)
+RUN echo "nameserver 8.8.8.8\nnameserver 1.1.1.1\nnameserver 8.8.4.4" > /etc/resolv.conf
+
 # Create user that HF Spaces expects (UID 1000)
 RUN useradd -m -u 1000 user
 
@@ -20,10 +23,14 @@ WORKDIR /bot
 COPY --chown=user:user pyproject.toml .
 
 # Install dependencies using system pip
-# Since system python is 3.11, this matches what we need
 RUN /usr/bin/python3 -m pip install --break-system-packages --no-cache-dir .
 
 COPY --chown=user:user . .
+
+# Pre-create all data/log directories that the bot needs at runtime
+# so the non-root user can write to them
+RUN mkdir -p data/assets/fonts data/db data/misc data/temp logs \
+    && chown -R user:user data logs
 
 # Switch to the non-root user
 USER user
