@@ -10,17 +10,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
+# Create user that HF Spaces expects (UID 1000)
+RUN useradd -m -u 1000 user
+
 ENV FONTCONFIG_FILE=/bot/extra/fonts.conf
 ENV PYTHONUNBUFFERED=1
 
 WORKDIR /bot
-COPY pyproject.toml .
+COPY --chown=user:user pyproject.toml .
 
 # Install dependencies using system pip
 # Since system python is 3.11, this matches what we need
 RUN /usr/bin/python3 -m pip install --break-system-packages --no-cache-dir .
 
-COPY . .
+COPY --chown=user:user . .
+
+# Switch to the non-root user
+USER user
 
 # Expose port for HF Spaces health check
 EXPOSE 7860

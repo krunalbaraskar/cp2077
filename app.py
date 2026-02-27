@@ -50,17 +50,15 @@ if __name__ == '__main__':
     health_thread = threading.Thread(target=run_health_server, daemon=True)
     health_thread.start()
 
-    # Configure DNS at runtime (backup for container restarts)
+    # Configure DNS at runtime (backup for container restarts, requires root)
     try:
         with open('/etc/resolv.conf', 'w') as f:
             f.write("nameserver 8.8.8.8\n")
             f.write("nameserver 1.1.1.1\n")
             f.write("nameserver 8.8.4.4\n")
         print("DNS configured successfully")
-    except PermissionError:
-        print("Could not write DNS config (running as non-root)")
-    except Exception as e:
-        print(f"DNS config warning: {e}")
+    except (PermissionError, OSError):
+        print("DNS config skipped (running as non-root, using system DNS)")
 
     # Test DNS resolution before starting bot
     def test_dns(host="discord.com", retries=5):
