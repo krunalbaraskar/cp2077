@@ -78,11 +78,18 @@ if __name__ == '__main__':
         return False
 
     # Run the Discord bot with retry logic
+    import asyncio
     max_retries = 5
     for attempt in range(max_retries):
         try:
             if not test_dns():
                 print("DNS resolution failed after retries, but attempting bot start anyway...")
+            
+            # Create a fresh event loop for each attempt.
+            # bot.run() closes the event loop when it exits (even on failure),
+            # so subsequent retries would fail with "Event loop is closed".
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
             
             from tle.__main__ import main
             print(f"Starting Discord bot (attempt {attempt + 1}/{max_retries})...")
