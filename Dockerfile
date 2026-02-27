@@ -10,9 +10,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
-# Configure DNS (must be done as root)
-RUN echo "nameserver 8.8.8.8\nnameserver 1.1.1.1\nnameserver 8.8.4.4" > /etc/resolv.conf
-
 # Create user that HF Spaces expects (UID 1000)
 RUN useradd -m -u 1000 user
 
