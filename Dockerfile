@@ -10,6 +10,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
+# Configure DNS - COPY works here because it writes at the image layer level,
+# unlike RUN which uses Docker's read-only mounted /etc/resolv.conf
+COPY resolv.conf /etc/resolv.conf
+
 # Create user that HF Spaces expects (UID 1000)
 RUN useradd -m -u 1000 user
 

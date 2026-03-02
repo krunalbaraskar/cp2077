@@ -1,11 +1,31 @@
 """
 Hugging Face Spaces entry point.
 Runs a simple health check HTTP server alongside the Discord bot.
+
+DNS FIX: aiodns (c-ares) reads its own resolv.conf which HF Spaces
+overrides at runtime. We force aiohttp to use ThreadedResolver instead,
+which delegates to stdlib socket.getaddrinfo (the same path urllib uses,
+and that works fine for downloading fonts etc.).
 """
 
 import os
+import sys
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
+
+# ── DNS Fix: force aiohttp to use ThreadedResolver ─────────────────────
+# This MUST happen before discord.py or aiohttp is imported, because
+# aiohttp checks for aiodns at import time and auto-selects AsyncResolver.
+# By removing aiodns from the importable modules, aiohttp falls back to
+# ThreadedResolver which uses the working stdlib socket.getaddrinfo.
+#
+# This is safe — we keep aiodns installed (supabase/other deps may want it)
+# but prevent aiohttp's auto-detection from picking it up.
+import importlib
+
+# Block aiohttp from detecting aiodns
+sys.modules['aiodns'] = None  # type: ignore[assignment]
+print("DNS fix applied: forced aiohttp to use ThreadedResolver (stdlib socket)")
 
 
 class HealthHandler(BaseHTTPRequestHandler):
@@ -42,53 +62,70 @@ def run_health_server():
     server.serve_forever()
 
 
+def try_fix_resolv_conf():
+    """Try to write working DNS servers to resolv.conf (best-effort)."""
+    resolv_content = "nameserver 8.8.8.8\nnameserver 1.1.1.1\nnameserver 8.8.4.4\n"
+    try:
+        with open('/etc/resolv.conf', 'r') as f:
+            current = f.read().strip()
+        print(f"Current resolv.conf:\n{current}")
+
+        # Only rewrite if it looks broken (no nameserver lines)
+        if 'nameserver' not in current:
+            try:
+                with open('/etc/resolv.conf', 'w') as f:
+                    f.write(resolv_content)
+                print("Rewrote /etc/resolv.conf with Google/Cloudflare DNS")
+            except PermissionError:
+                print("Cannot write /etc/resolv.conf (permission denied, non-root)")
+    except Exception as e:
+        print(f"Could not read resolv.conf: {e}")
+
+
 if __name__ == '__main__':
     import time
     import socket
-    
+
+    print(f"===== Application Startup at {time.strftime('%Y-%m-%d %H:%M:%S')} =====")
+
     # Start health check server in background thread
     health_thread = threading.Thread(target=run_health_server, daemon=True)
     health_thread.start()
 
-    # Configure DNS at runtime (backup for container restarts, requires root)
-    try:
-        with open('/etc/resolv.conf', 'w') as f:
-            f.write("nameserver 8.8.8.8\n")
-            f.write("nameserver 1.1.1.1\n")
-            f.write("nameserver 8.8.4.4\n")
-        print("DNS configured successfully")
-    except (PermissionError, OSError):
-        print("DNS config skipped (running as non-root, using system DNS)")
+    # Print network diagnostics
+    print("=== Network Diagnostics ===")
+    try_fix_resolv_conf()
 
-    # Test DNS resolution before starting bot
-    def test_dns(host="discord.com", retries=5):
-        for attempt in range(retries):
-            try:
-                result = socket.gethostbyname(host)
-                print(f"DNS resolution successful: {host} -> {result}")
-                return True
-            except socket.gaierror as e:
-                wait_time = 2 ** attempt  # Exponential backoff: 1, 2, 4, 8, 16 seconds
-                print(f"DNS resolution attempt {attempt + 1}/{retries} failed: {e}")
-                if attempt < retries - 1:
-                    print(f"Retrying in {wait_time} seconds...")
-                    time.sleep(wait_time)
-        return False
+    # Check for proxy env vars
+    for var in ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'NO_PROXY']:
+        val = os.environ.get(var)
+        if val:
+            print(f"  {var}={val}")
+    print("===========================")
+
+    # Quick DNS sanity check (non-blocking, just informational)
+    def test_dns(host="discord.com"):
+        try:
+            result = socket.gethostbyname(host)
+            print(f"DNS check: {host} -> {result}")
+            return True
+        except socket.gaierror as e:
+            print(f"DNS check: {host} failed ({e}), but ThreadedResolver should handle it")
+            return False
+
+    test_dns()
 
     # Run the Discord bot with retry logic
     import asyncio
     max_retries = 5
     for attempt in range(max_retries):
         try:
-            if not test_dns():
-                print("DNS resolution failed after retries, but attempting bot start anyway...")
-            
             # Create a fresh event loop for each attempt.
             # bot.run() closes the event loop when it exits (even on failure),
             # so subsequent retries would fail with "Event loop is closed".
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            
+
             from tle.__main__ import main
             print(f"Starting Discord bot (attempt {attempt + 1}/{max_retries})...")
             main()
