@@ -1,0 +1,20 @@
+# Discord bot core
+discord.py==1.7.3
+aiohttp<3.8
+aiocache
+
+# Data & plotting
+numpy
+pandas
+matplotlib
+seaborn
+
+# Images
+pillow
+aiodns
+brotli
+
+# Database
+supabase>=2.0.0
+python-dotenv
+pycairo
