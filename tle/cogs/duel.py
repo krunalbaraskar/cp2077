@@ -17,7 +17,7 @@ from tle.util import (
     paginator,
     table,
 )
-from tle.util.db.user_db_conn import Duel, DuelType, Winner, ParticipantStatus
+from tle.util.db.user_db_conn import Duel, DuelType, ParticipantStatus, Winner
 
 _DUEL_INVALIDATE_TIME = 2 * 60
 _DUEL_EXPIRY_TIME = 5 * 60
@@ -85,7 +85,6 @@ def parse_cf_problem_url(url):
     return None
 
 
-
 def calculate_handicap(player_rating, opponent_rating):
     """Calculate time handicap in seconds for the lower rated player.
     Returns (player_handicap, opponent_handicap) where handicap is subtracted from solve time.
@@ -108,7 +107,9 @@ def apply_handicap(solve_time, handicap):
     return max(0, solve_time - handicap)
 
 
-def calculate_multi_delta(placement, solved_count, num_problems, solve_data, player_cf_rating):
+def calculate_multi_delta(
+    placement, solved_count, num_problems, solve_data, player_cf_rating
+):
     """Calculate performance-based rating delta for a multiplayer duel.
 
     Args:
@@ -201,17 +202,17 @@ class Dueling(commands.Cog):
     @commands.group(brief='Duel commands', invoke_without_command=True)
     async def duel(self, ctx):
         """Duel system for competitive problem solving.
-        
+
         **Features:**
         • 1v1 duels with ELO rating system
         • Multi-player duels (2-10 players, 1-5 problems)
         • Time handicap for lower-rated players
         • Official/unofficial duel modes
-        
+
         **Handicap System:**
         Lower-rated players get 30s time bonus per 100 rating difference.
         Use 'nohandicap' to disable this for fair matches.
-        
+
         **Rating:**
         Starts at 1500. Changes based on ELO after official duels.
         """
@@ -241,11 +242,12 @@ class Dueling(commands.Cog):
         await ctx.send(f'{ctx.author.mention} successfully registered as a duelist')
 
     @duel.command(
-        brief='Challenge to a 1v1 duel', usage='opponent [rating] [+tag..] [~tag..] [nohandicap] [problem_url]'
+        brief='Challenge to a 1v1 duel',
+        usage='opponent [rating] [+tag..] [~tag..] [nohandicap] [problem_url]',
     )
     async def challenge(self, ctx, opponent: discord.Member, *args):
         """Challenge another server member to a 1v1 duel.
-        
+
         **Arguments:**
         • opponent - The user to challenge
         • rating - Problem difficulty (default: lowest CF rating - 400)
@@ -253,16 +255,16 @@ class Dueling(commands.Cog):
         • ~tag - Exclude problems with this tag
         • nohandicap - Disable time handicap
         • problem_url - Direct Codeforces problem link (makes duel unofficial)
-        
+
         **Handicap:**
         Lower-rated players get 30s bonus per 100 rating diff.
         Example: 1400 vs 1600 = 60s advantage for 1400.
-        
+
         **Official vs Unofficial:**
         Duel is unofficial (no rating change) if:
         • Custom problem URL is provided
         • Problem rating < min CF rating of both players
-        
+
         **Examples:**
         `;duel challenge @user` - Standard duel
         `;duel challenge @user 1500` - 1500-rated problem
@@ -302,7 +304,7 @@ class Dueling(commands.Cog):
             if arg.lower() == 'nohandicap':
                 nohandicap = True
                 args_list.remove(arg)
-        
+
         # Check for custom problem URL
         custom_problem = None
         for arg in args_list[:]:
@@ -317,10 +319,10 @@ class Dueling(commands.Cog):
                         break
                 if custom_problem is None:
                     raise DuelCogError(
-                        f'Problem not found in cache. Make sure the problem exists and try again.'
+                        'Problem not found in cache. Make sure the problem exists and try again.'
                     )
                 break
-        
+
         args = tuple(args_list)
 
         tags = cf_common.parse_tags(args, prefix='+')
@@ -331,7 +333,7 @@ class Dueling(commands.Cog):
         min_cf_rating = round(lowest_rating, -2)  # Min CF rating rounded to nearest 100
         suggested_rating = max(min_cf_rating + _DUEL_RATING_DELTA, 500)
         rating = round(rating, -2) if rating else suggested_rating
-        
+
         # Only custom problem URL makes duel unofficial
         unofficial = custom_problem is not None
         dtype = DuelType.UNOFFICIAL if unofficial else DuelType.OFFICIAL
@@ -382,9 +384,11 @@ class Dueling(commands.Cog):
                 )
 
             problems.sort(
-                key=lambda problem: cf_common.cache2.contest_cache.get_contest(
-                    problem.contestId
-                ).startTimeSeconds
+                key=lambda problem: (
+                    cf_common.cache2.contest_cache.get_contest(
+                        problem.contestId
+                    ).startTimeSeconds
+                )
             )
 
             choice = max(random.randrange(len(problems)) for _ in range(2))
@@ -395,22 +399,25 @@ class Dueling(commands.Cog):
             challenger_id, challengee_id, issue_time, problem, dtype, nohandicap
         )
 
-
         # Get duel ratings for display
         challenger_r = cf_common.user_db.get_duel_rating(challenger_id)
         challengee_r = cf_common.user_db.get_duel_rating(challengee_id)
-        
+
         ostr = 'an **unofficial**' if unofficial else 'an **official**'
         handicap_str = ''
         if not nohandicap:
-            challenger_hc, challengee_hc = calculate_handicap(challenger_r, challengee_r)
+            challenger_hc, challengee_hc = calculate_handicap(
+                challenger_r, challengee_r
+            )
             if challenger_hc > 0:
                 handicap_str = f'\n⏱️ {ctx.author.mention} gets {int(challenger_hc)}s time handicap!'
             elif challengee_hc > 0:
-                handicap_str = f'\n⏱️ {opponent.mention} gets {int(challengee_hc)}s time handicap!'
+                handicap_str = (
+                    f'\n⏱️ {opponent.mention} gets {int(challengee_hc)}s time handicap!'
+                )
         else:
             handicap_str = '\n🚫 No handicap mode'
-        
+
         await ctx.send(
             f'{ctx.author.mention} ({challenger_r}) is challenging'
             f' {opponent.mention} ({challengee_r}) to {ostr} {rstr}duel!{handicap_str}'
@@ -488,14 +495,14 @@ class Dueling(commands.Cog):
     @duel.command(brief='Complete a duel')
     async def complete(self, ctx):
         """Complete an ongoing duel and determine the winner.
-        
+
         Checks both players' Codeforces submissions.
         Winner is determined by fastest solve time.
-        
+
         **With Handicap:**
         If handicap is enabled, the lower-rated player's time
         is reduced by 30s per 100 rating difference.
-        
+
         **Rating Changes (Official duels only):**
         Uses ELO formula - bigger upset = bigger rating swing.
         """
@@ -547,19 +554,25 @@ class Dueling(commands.Cog):
 
         challenger = ctx.guild.get_member(challenger_id)
         challengee = ctx.guild.get_member(challengee_id)
-        
+
         # Get duel ratings for handicap calculation and display
         challenger_r = cf_common.user_db.get_duel_rating(challenger_id)
         challengee_r = cf_common.user_db.get_duel_rating(challengee_id)
-        
+
         # Calculate and apply handicap if enabled
         challenger_hc, challengee_hc = (0, 0)
         if not nohandicap:
-            challenger_hc, challengee_hc = calculate_handicap(challenger_r, challengee_r)
-        
+            challenger_hc, challengee_hc = calculate_handicap(
+                challenger_r, challengee_r
+            )
+
         # Apply handicap to solve times (subtract handicap = makes time "better")
-        challenger_adjusted = challenger_time - start_time - challenger_hc if challenger_time else None
-        challengee_adjusted = challengee_time - start_time - challengee_hc if challengee_time else None
+        challenger_adjusted = (
+            challenger_time - start_time - challenger_hc if challenger_time else None
+        )
+        challengee_adjusted = (
+            challengee_time - start_time - challengee_hc if challengee_time else None
+        )
 
         if challenger_time and challengee_time:
             # Both solved - compare adjusted times
@@ -580,14 +593,17 @@ class Dueling(commands.Cog):
                     winner_adjusted = challengee_adjusted
                     loser_adjusted = challenger_adjusted
                     win_status = Winner.CHALLENGEE
-                
+
                 raw_diff = cf_common.pretty_time_format(
-                    abs((challengee_time - start_time) - (challenger_time - start_time)), always_seconds=True
+                    abs(
+                        (challengee_time - start_time) - (challenger_time - start_time)
+                    ),
+                    always_seconds=True,
                 )
                 adj_diff = cf_common.pretty_time_format(
                     abs(loser_adjusted - winner_adjusted), always_seconds=True
                 )
-                
+
                 embed = complete_duel(
                     duelid,
                     ctx.guild.id,
@@ -598,9 +614,11 @@ class Dueling(commands.Cog):
                     1,
                     dtype,
                 )
-                
+
                 if not nohandicap and (challenger_hc > 0 or challengee_hc > 0):
-                    handicap_note = f'\n⏱️ (With handicap: adjusted time diff was {adj_diff})'
+                    handicap_note = (
+                        f'\n⏱️ (With handicap: adjusted time diff was {adj_diff})'
+                    )
                     await ctx.send(
                         f'Both {challenger.mention} and {challengee.mention}'
                         f' solved it but {winner.mention} was {raw_diff} faster!{handicap_note}',
@@ -1040,11 +1058,14 @@ class Dueling(commands.Cog):
         await ctx.send(embed=embed, file=discord_file)
 
     # Multi-player duel commands
-    
-    @duel.command(brief='Start a multi-player duel', usage='@user1 @user2 ... [num_problems] [rating...] [+tag..] [~tag..] [nohandicap]')
+
+    @duel.command(
+        brief='Start a multi-player duel',
+        usage='@user1 @user2 ... [num_problems] [rating...] [+tag..] [~tag..] [nohandicap]',
+    )
     async def multistart(self, ctx, *args):
         """Start a multi-player duel with 2-10 participants.
-        
+
         **Arguments:**
         • @users - Mention 1-9 other users (you're auto-included)
         • num_problems - Number of problems (1-5, default: 3)
@@ -1052,15 +1073,15 @@ class Dueling(commands.Cog):
         • +tag - Include problems with this tag
         • ~tag - Exclude problems with this tag
         • nohandicap - Disable time handicap
-        
+
         **Scoring:**
         Ranked by problems solved, ties broken by total time.
-        
+
         **Rating Changes (Official duels):**
         • 1st: +40, 2nd: +20, 3rd: +10
         • 4th+ (solved >0): -5
         • 0 solved: -15
-        
+
         **Examples:**
         `;duel multistart @alice @bob` - 2 players, 3 problems
         `;duel multistart @a @b @c 5 1600` - 3 players, 5 problems at 1600
@@ -1070,7 +1091,7 @@ class Dueling(commands.Cog):
         # Parse mentions and arguments
         mentions = []
         remaining_args = []
-        
+
         for arg in args:
             # Try to parse as mention
             if arg.startswith('<@') and arg.endswith('>'):
@@ -1084,35 +1105,43 @@ class Dueling(commands.Cog):
                 except ValueError:
                     pass
             remaining_args.append(arg)
-        
+
         # Check for nohandicap option
         nohandicap = False
         for arg in remaining_args[:]:
             if arg.lower() == 'nohandicap':
                 nohandicap = True
                 remaining_args.remove(arg)
-        
+
         # Add creator to participants
         all_participants = [ctx.author] + mentions
-        
+
         if len(all_participants) < 2:
-            raise DuelCogError('You need at least 2 participants (including yourself) for a multi-player duel!')
-        
+            raise DuelCogError(
+                'You need at least 2 participants (including yourself) for a multi-player duel!'
+            )
+
         if len(all_participants) > 10:
-            raise DuelCogError('Maximum 10 participants allowed for a multi-player duel!')
-        
+            raise DuelCogError(
+                'Maximum 10 participants allowed for a multi-player duel!'
+            )
+
         # Check all participants are duelists
         for participant in all_participants:
             if not cf_common.user_db.is_duelist(participant.id):
-                raise DuelCogError(f'{participant.mention} is not a registered duelist!')
-        
+                raise DuelCogError(
+                    f'{participant.mention} is not a registered duelist!'
+                )
+
         # Check none are in active duels
         for participant in all_participants:
             if cf_common.user_db.check_duel_challenge(participant.id):
                 raise DuelCogError(f'{participant.mention} is currently in a 1v1 duel!')
             if cf_common.user_db.check_multiplayer_duel_participant(participant.id):
-                raise DuelCogError(f'{participant.mention} is currently in a multi-player duel!')
-        
+                raise DuelCogError(
+                    f'{participant.mention} is currently in a multi-player duel!'
+                )
+
         # Parse ratings - collect all numbers that look like CF ratings (800-3500)
         rating_args = []
         num_problems_arg = None
@@ -1129,24 +1158,25 @@ class Dueling(commands.Cog):
                     remaining_args.remove(arg)
             except ValueError:
                 pass
-        
+
         # Parse tags
         tags = cf_common.parse_tags(remaining_args, prefix='+')
         bantags = cf_common.parse_tags(remaining_args, prefix='~')
-        
+
         # Get handles and calculate suggested rating
         userids = [p.id for p in all_participants]
         handles = [cf_common.user_db.get_handle(uid, ctx.guild.id) for uid in userids]
-        
+
         # Resolve handles
-        await cf_common.resolve_handles(ctx, self.converter, 
-            tuple('!' + str(p) for p in all_participants))
-        
+        await cf_common.resolve_handles(
+            ctx, self.converter, tuple('!' + str(p) for p in all_participants)
+        )
+
         users = [cf_common.user_db.fetch_cf_user(handle) for handle in handles]
         lowest_rating = min(user.rating or 0 for user in users)
         min_cf_rating = round(lowest_rating, -2)  # Min CF rating rounded to nearest 100
         suggested_rating = max(min_cf_rating + _DUEL_RATING_DELTA, 500)
-        
+
         # Determine ratings mode
         # Multi-player duels are always official (no custom URL option)
         if len(rating_args) >= 2:
@@ -1170,10 +1200,10 @@ class Dueling(commands.Cog):
             target_ratings = [suggested_rating] * num_problems
             rating_display = str(suggested_rating)
             avg_rating = suggested_rating
-        
+
         # Multi-player duels are always official
         dtype = DuelType.OFFICIAL
-        
+
         # Get submissions to filter solved problems
         submissions = [await cf.user.status(handle=handle) for handle in handles]
         solved = {
@@ -1182,14 +1212,14 @@ class Dueling(commands.Cog):
             for sub in subs
             if sub.verdict == 'OK'
         }
-        
+
         # Get previously seen problems in duels
         seen = {
             name
             for userid in userids
             for (name,) in cf_common.user_db.get_duel_problem_names(userid)
         }
-        
+
         # Get available problems for a rating
         def get_problems(r):
             return [
@@ -1198,12 +1228,14 @@ class Dueling(commands.Cog):
                 if prob.rating == r
                 and prob.name not in solved
                 and prob.name not in seen
-                and not any(cf_common.is_contest_writer(prob.contestId, h) for h in handles)
+                and not any(
+                    cf_common.is_contest_writer(prob.contestId, h) for h in handles
+                )
                 and not cf_common.is_nonstandard_problem(prob)
                 and prob.matches_all_tags(tags)
                 and not prob.matches_any_tag(bantags)
             ]
-        
+
         # Select one problem per target rating
         selected_problems = []
         used_names = set()
@@ -1213,7 +1245,13 @@ class Dueling(commands.Cog):
             for r in range(target_r, 400, -100):
                 problems = [p for p in get_problems(r) if p.name not in used_names]
                 if problems:
-                    problems.sort(key=lambda p: cf_common.cache2.contest_cache.get_contest(p.contestId).startTimeSeconds)
+                    problems.sort(
+                        key=lambda p: (
+                            cf_common.cache2.contest_cache.get_contest(
+                                p.contestId
+                            ).startTimeSeconds
+                        )
+                    )
                     choice = max(random.randrange(len(problems)) for _ in range(2))
                     selected = problems[choice]
                     selected_problems.append(selected)
@@ -1222,36 +1260,47 @@ class Dueling(commands.Cog):
                     break
             if not problem_found:
                 raise DuelCogError(f'No unsolved problems found at rating {target_r}!')
-        
+
         # Sort selected problems by rating (ascending)
         selected_problems.sort(key=lambda p: p.rating or 0)
-        
+
         # Create the duel
         issue_time = datetime.datetime.now().timestamp()
         duel_id = cf_common.user_db.create_multiplayer_duel(
-            ctx.author.id, ctx.guild.id, issue_time, num_problems, avg_rating, dtype, nohandicap
+            ctx.author.id,
+            ctx.guild.id,
+            issue_time,
+            num_problems,
+            avg_rating,
+            dtype,
+            nohandicap,
         )
 
-        
         # Add all participants
         for participant in all_participants:
-            status = ParticipantStatus.ACCEPTED if participant == ctx.author else ParticipantStatus.INVITED
-            cf_common.user_db.add_multiplayer_participant(duel_id, participant.id, status)
-        
+            status = (
+                ParticipantStatus.ACCEPTED
+                if participant == ctx.author
+                else ParticipantStatus.INVITED
+            )
+            cf_common.user_db.add_multiplayer_participant(
+                duel_id, participant.id, status
+            )
+
         # Add all problems
         for i, problem in enumerate(selected_problems):
             cf_common.user_db.add_multiplayer_problem(duel_id, problem, i + 1)
-        
+
         # Build participant list with ratings
         participant_list = []
         for p in all_participants:
             p_rating = cf_common.user_db.get_duel_rating(p.id)
             participant_list.append(f'{p.mention} ({p_rating})')
         participant_mentions = ', '.join(participant_list)
-        
+
         ostr = 'official'  # Multi-player duels are always official
         handicap_mode = '🚫 No handicap' if nohandicap else '⏱️ Handicap enabled'
-        
+
         embed = discord_common.cf_color_embed(title='🎯 Multi-Player Duel Created!')
         embed.add_field(name='Creator', value=ctx.author.mention, inline=False)
         embed.add_field(name='Participants', value=participant_mentions, inline=False)
@@ -1260,70 +1309,80 @@ class Dueling(commands.Cog):
         embed.add_field(name='Type', value=ostr.capitalize(), inline=True)
         embed.add_field(name='Mode', value=handicap_mode, inline=True)
         embed.add_field(
-            name='Status', 
-            value=f'Waiting for all participants to accept. Use `;duel multiaccept` to join!',
-            inline=False
+            name='Status',
+            value='Waiting for all participants to accept. Use `;duel multiaccept` to join!',
+            inline=False,
         )
-        
+
         await ctx.send(embed=embed)
-        
+
         # Start expiry timer
         await asyncio.sleep(_DUEL_EXPIRY_TIME)
         if cf_common.user_db.cancel_multiplayer_duel(duel_id, Duel.EXPIRED):
             message = f'{ctx.author.mention}, your multi-player duel has expired!'
             embed = discord_common.embed_alert(message)
             await ctx.send(embed=embed)
-    
+
     @duel.command(brief='Accept a multi-player duel invitation')
     async def multiaccept(self, ctx):
         """Accept your pending multi-player duel invitation.
-        
+
         Once all participants accept, the duel starts after a 15-second countdown.
         Problems will be revealed to all participants at the same time.
         """
         duel_info = cf_common.user_db.get_multiplayer_duel_by_user(ctx.author.id)
         if not duel_info:
-            raise DuelCogError(f'{ctx.author.mention}, you are not invited to any multi-player duel!')
-        
+            raise DuelCogError(
+                f'{ctx.author.mention}, you are not invited to any multi-player duel!'
+            )
+
         # duel_info is a tuple: (id, creator_id, guild_id, issue_time, start_time, ...)
         duel_id = duel_info[0]
-        
+
         # Check if already accepted
         # participants are tuples: (user_id, status, problems_solved, total_time, placement, rating_delta)
         participants = cf_common.user_db.get_multiplayer_participants(duel_id)
         my_participant = next((p for p in participants if p[0] == ctx.author.id), None)
-        
+
         if my_participant and my_participant[1] == ParticipantStatus.ACCEPTED:
-            raise DuelCogError(f'{ctx.author.mention}, you have already accepted this duel!')
-        
+            raise DuelCogError(
+                f'{ctx.author.mention}, you have already accepted this duel!'
+            )
+
         # Accept the duel
-        cf_common.user_db.update_participant_status(duel_id, ctx.author.id, ParticipantStatus.ACCEPTED)
-        
+        cf_common.user_db.update_participant_status(
+            duel_id, ctx.author.id, ParticipantStatus.ACCEPTED
+        )
+
         await ctx.send(f'{ctx.author.mention} has accepted the multi-player duel!')
-        
+
         # Check if all participants have accepted
         if cf_common.user_db.check_all_accepted(duel_id):
-            await ctx.send('All participants have accepted! Starting duel in 15 seconds...')
+            await ctx.send(
+                'All participants have accepted! Starting duel in 15 seconds...'
+            )
             await asyncio.sleep(15)
-            
+
             start_time = datetime.datetime.now().timestamp()
             rc = cf_common.user_db.start_multiplayer_duel(duel_id, start_time)
-            
+
             if rc != 1:
                 raise DuelCogError('Unable to start the multi-player duel.')
-            
+
             # Get and display problems
             problems = cf_common.user_db.get_multiplayer_problems(duel_id)
             participants = cf_common.user_db.get_multiplayer_participants(duel_id)
             participant_mentions = ', '.join(
-                ctx.guild.get_member(p[0]).mention 
-                for p in participants 
+                ctx.guild.get_member(p[0]).mention
+                for p in participants
                 if p[1] == ParticipantStatus.ACCEPTED
             )
-            
+
             embed = discord_common.cf_color_embed(title='⚔️ Multi-Player Duel Started!')
-            embed.add_field(name='Participants', value=participant_mentions, inline=False)
-            
+            embed.add_field(
+                name='Participants', value=participant_mentions, inline=False
+            )
+
             # prob_info tuple: (problem_name, contest_id, p_index, problem_order)
             problem_list = []
             for prob_info in problems:
@@ -1331,112 +1390,140 @@ class Dueling(commands.Cog):
                 problem_list.append(
                     f'{prob_info[3]}. [{problem.name}]({problem.url}) [{problem.rating}]'
                 )
-            
-            embed.add_field(name='Problems', value='\n'.join(problem_list), inline=False)
+
+            embed.add_field(
+                name='Problems', value='\n'.join(problem_list), inline=False
+            )
             embed.add_field(name='Good luck!', value='🍀', inline=False)
-            
+
             await ctx.send(embed=embed)
-    
+
     @duel.command(brief='Decline a multi-player duel invitation')
     async def multidecline(self, ctx):
         """Decline your pending multi-player duel invitation.
-        
+
         If too few participants remain (<2), the duel is cancelled.
         You can only decline pending duels, not ongoing ones.
         """
         duel_info = cf_common.user_db.get_multiplayer_duel_by_user(ctx.author.id)
         if not duel_info:
-            raise DuelCogError(f'{ctx.author.mention}, you are not invited to any multi-player duel!')
-        
+            raise DuelCogError(
+                f'{ctx.author.mention}, you are not invited to any multi-player duel!'
+            )
+
         # duel_info tuple: (id, creator_id, guild_id, issue_time, start_time, finish_time, status, type, ...)
         duel_id = duel_info[0]
         duel_status = duel_info[6]
-        
+
         if duel_status != Duel.PENDING:
             raise DuelCogError(f'{ctx.author.mention}, this duel has already started!')
-        
+
         # Decline the duel
-        cf_common.user_db.update_participant_status(duel_id, ctx.author.id, ParticipantStatus.DECLINED)
-        
+        cf_common.user_db.update_participant_status(
+            duel_id, ctx.author.id, ParticipantStatus.DECLINED
+        )
+
         # Check remaining participants (status is at index 1)
         participants = cf_common.user_db.get_multiplayer_participants(duel_id)
-        active_count = sum(1 for p in participants if p[1] != ParticipantStatus.DECLINED)
-        
+        active_count = sum(
+            1 for p in participants if p[1] != ParticipantStatus.DECLINED
+        )
+
         if active_count < 2:
             # Cancel the duel if too few participants
             cf_common.user_db.cancel_multiplayer_duel(duel_id, Duel.DECLINED)
-            await ctx.send(f'{ctx.author.mention} declined. Not enough participants remain. Duel cancelled.')
+            await ctx.send(
+                f'{ctx.author.mention} declined. Not enough participants remain. Duel cancelled.'
+            )
         else:
             await ctx.send(f'{ctx.author.mention} has declined the multi-player duel.')
-    
+
     @duel.command(brief='Cancel your pending multi-player duel')
     async def multicancel(self, ctx):
         """Cancel a pending multi-player duel you created.
-        
+
         Only the creator can cancel. Only works for pending duels (not started).
         """
         duel_info = cf_common.user_db.get_multiplayer_duel_by_user(ctx.author.id)
         if not duel_info:
-            raise DuelCogError(f'{ctx.author.mention}, you are not in any multi-player duel!')
-        
+            raise DuelCogError(
+                f'{ctx.author.mention}, you are not in any multi-player duel!'
+            )
+
         # duel_info tuple: (id, creator_id, guild_id, issue_time, start_time, finish_time, status, ...)
         duel_id = duel_info[0]
         creator_id = duel_info[1]
         duel_status = duel_info[6]
-        
+
         if duel_status != Duel.PENDING:
-            raise DuelCogError(f'{ctx.author.mention}, this duel has already started! Use `;duel multicomplete` when done.')
-        
+            raise DuelCogError(
+                f'{ctx.author.mention}, this duel has already started! Use `;duel multicomplete` when done.'
+            )
+
         if creator_id != ctx.author.id:
-            raise DuelCogError(f'{ctx.author.mention}, only the creator can cancel the duel. Use `;duel multidecline` to leave.')
-        
+            raise DuelCogError(
+                f'{ctx.author.mention}, only the creator can cancel the duel. Use `;duel multidecline` to leave.'
+            )
+
         # Cancel the duel
         cf_common.user_db.cancel_multiplayer_duel(duel_id, Duel.WITHDRAWN)
         await ctx.send(f'{ctx.author.mention} has cancelled the multi-player duel.')
-    
+
     @duel.command(brief='Withdraw from an ongoing multi-player duel')
     async def multiwithdraw(self, ctx):
         """Withdraw from an ongoing multi-player duel.
-        
+
         You can withdraw from a duel that has started but not completed.
         If too few participants remain (<2), the duel is cancelled.
         """
         duel_info = cf_common.user_db.get_multiplayer_duel_by_user(ctx.author.id)
         if not duel_info:
-            raise DuelCogError(f'{ctx.author.mention}, you are not in any multi-player duel!')
-        
+            raise DuelCogError(
+                f'{ctx.author.mention}, you are not in any multi-player duel!'
+            )
+
         # duel_info tuple: (id, creator_id, guild_id, issue_time, start_time, finish_time, status, ...)
         duel_id = duel_info[0]
         duel_status = duel_info[6]
-        
+
         if duel_status == Duel.PENDING:
-            raise DuelCogError(f'{ctx.author.mention}, use `;duel multidecline` or `;duel multicancel` for pending duels.')
-        
+            raise DuelCogError(
+                f'{ctx.author.mention}, use `;duel multidecline` or `;duel multicancel` for pending duels.'
+            )
+
         if duel_status != Duel.ONGOING:
             raise DuelCogError(f'{ctx.author.mention}, this duel is no longer active.')
-        
+
         # Mark participant as declined/withdrawn
-        cf_common.user_db.update_participant_status(duel_id, ctx.author.id, ParticipantStatus.DECLINED)
-        
+        cf_common.user_db.update_participant_status(
+            duel_id, ctx.author.id, ParticipantStatus.DECLINED
+        )
+
         # Check remaining active participants
         participants = cf_common.user_db.get_multiplayer_participants(duel_id)
-        active_count = sum(1 for p in participants if p[1] == ParticipantStatus.ACCEPTED)
-        
+        active_count = sum(
+            1 for p in participants if p[1] == ParticipantStatus.ACCEPTED
+        )
+
         if active_count < 2:
             cf_common.user_db.cancel_multiplayer_duel(duel_id, Duel.WITHDRAWN)
-            await ctx.send(f'{ctx.author.mention} withdrew. Not enough participants remain. Duel cancelled.')
+            await ctx.send(
+                f'{ctx.author.mention} withdrew. Not enough participants remain. Duel cancelled.'
+            )
         else:
-            await ctx.send(f'{ctx.author.mention} has withdrawn from the multi-player duel.')
-    
+            await ctx.send(
+                f'{ctx.author.mention} has withdrawn from the multi-player duel.'
+            )
+
     @duel.command(brief='Complete a multi-player duel')
     async def multicomplete(self, ctx):
         """Complete an ongoing multi-player duel and show results.
-        
+
         Checks all participants' Codeforces submissions.
-        
+
         **Scoring:**
         Ranked by problems solved, ties broken by total time.
-        
+
         **Rating Changes (Performance-based):**
         • Each solved problem: +2 to +23 based on difficulty vs your CF rating + speed
         • Placement bonus: 1st +5, 2nd +2, 3rd +0, 4th+ -2
@@ -1444,56 +1531,59 @@ class Dueling(commands.Cog):
         """
         duel_info = cf_common.user_db.get_multiplayer_duel_by_user(ctx.author.id)
         if not duel_info:
-            raise DuelCogError(f'{ctx.author.mention}, you are not in a multi-player duel!')
-        
+            raise DuelCogError(
+                f'{ctx.author.mention}, you are not in a multi-player duel!'
+            )
+
         # duel_info tuple: (id, creator_id, guild_id, issue_time, start_time, finish_time, status, type, num_problems, rating, nohandicap)
         duel_id = duel_info[0]
         duel_start_time = duel_info[4]
         duel_status = duel_info[6]
         duel_type = duel_info[7]
         duel_num_problems = duel_info[8]
-        
+
         if duel_status != Duel.ONGOING:
             raise DuelCogError(f'{ctx.author.mention}, this duel has not started yet!')
-        
+
         participants = cf_common.user_db.get_multiplayer_participants(duel_id)
         problems = cf_common.user_db.get_multiplayer_problems(duel_id)
-        
+
         UNSOLVED = 0
         TESTING = -1
-        
+
         # Check each participant's progress
         # participant tuple: (user_id, status, problems_solved, total_time, placement, rating_delta)
         participant_results = []
         for participant in participants:
             if participant[1] != ParticipantStatus.ACCEPTED:
                 continue
-            
+
             user_id = participant[0]
             handle = cf_common.user_db.get_handle(user_id, ctx.guild.id)
             subs = await cf.user.status(handle=handle)
-            
+
             solved_count = 0
             total_time = 0.0
             has_testing = False
             solve_data = []  # (problem_rating, solve_time_seconds) for each solved problem
-            
+
             # prob_info tuple: (problem_name, contest_id, p_index, problem_order)
             for prob_info in problems:
                 problem_subs = [
-                    sub for sub in subs
+                    sub
+                    for sub in subs
                     if sub.problem.contestId == prob_info[1]
                     and sub.problem.index == prob_info[2]
                     and sub.creationTimeSeconds >= duel_start_time
                 ]
-                
+
                 if not problem_subs:
                     continue
-                
+
                 if any(sub.verdict == 'TESTING' for sub in problem_subs):
                     has_testing = True
                     break
-                
+
                 accepted_subs = [sub for sub in problem_subs if sub.verdict == 'OK']
                 if accepted_subs:
                     solved_count += 1
@@ -1501,40 +1591,48 @@ class Dueling(commands.Cog):
                     solve_seconds = solve_time - duel_start_time
                     total_time += solve_seconds
                     # Get problem rating for delta calculation
-                    problem = cf_common.cache2.problem_cache.problem_by_name.get(prob_info[0])
-                    prob_rating = problem.rating if problem and problem.rating else duel_info[9]
+                    problem = cf_common.cache2.problem_cache.problem_by_name.get(
+                        prob_info[0]
+                    )
+                    prob_rating = (
+                        problem.rating if problem and problem.rating else duel_info[9]
+                    )
                     solve_data.append((prob_rating, solve_seconds))
-            
+
             if has_testing:
                 await ctx.send(
                     f'Wait a bit, {ctx.author.mention}. A submission is still being judged.'
                 )
                 return
-            
+
             # Get player's CF rating for delta calculation
             cf_user = cf_common.user_db.fetch_cf_user(handle)
             player_cf_rating = cf_user.rating if cf_user and cf_user.rating else 0
-            
-            participant_results.append({
-                'user_id': user_id,
-                'solved': solved_count,
-                'time': total_time,
-                'solve_data': solve_data,
-                'cf_rating': player_cf_rating,
-                'member': ctx.guild.get_member(user_id)
-            })
-            
+
+            participant_results.append(
+                {
+                    'user_id': user_id,
+                    'solved': solved_count,
+                    'time': total_time,
+                    'solve_data': solve_data,
+                    'cf_rating': player_cf_rating,
+                    'member': ctx.guild.get_member(user_id),
+                }
+            )
+
             # Update progress in database
-            cf_common.user_db.update_participant_progress(duel_id, user_id, solved_count, total_time)
-        
+            cf_common.user_db.update_participant_progress(
+                duel_id, user_id, solved_count, total_time
+            )
+
         # Sort by problems solved (desc), then by time (asc)
         participant_results.sort(key=lambda x: (-x['solved'], x['time']))
-        
+
         # Calculate placements and rating deltas
         placements_with_deltas = []
         for i, result in enumerate(participant_results):
             placement = i + 1
-            
+
             if duel_type == DuelType.OFFICIAL:
                 delta = calculate_multi_delta(
                     placement=placement,
@@ -1545,53 +1643,59 @@ class Dueling(commands.Cog):
                 )
             else:
                 delta = 0
-            
+
             placements_with_deltas.append((result['user_id'], placement, delta))
-        
+
         # Complete the duel
         finish_time = datetime.datetime.now().timestamp()
         rc = cf_common.user_db.complete_multiplayer_duel(
             duel_id, finish_time, placements_with_deltas, duel_type
         )
-        
+
         if rc == 0:
             raise DuelCogError('Unable to complete the multi-player duel.')
-        
+
         # Display results
         embed = discord_common.cf_color_embed(title='🏆 Multi-Player Duel Complete!')
-        
+
         medals = ['🥇', '🥈', '🥉']
         for i, result in enumerate(participant_results):
-            medal = medals[i] if i < 3 else f'{i+1}.'
+            medal = medals[i] if i < 3 else f'{i + 1}.'
             member = result['member']
             solved = result['solved']
             time_str = cf_common.pretty_time_format(result['time'], always_seconds=True)
             delta = placements_with_deltas[i][2]
             delta_str = f' ({delta:+d})' if duel_type == DuelType.OFFICIAL else ''
-            
+
             embed.add_field(
                 name=f'{medal} {member.display_name}',
                 value=f'{solved}/{duel_num_problems} solved in {time_str}{delta_str}',
-                inline=False
+                inline=False,
             )
-        
+
         if duel_type == DuelType.OFFICIAL:
             rating_changes = []
             for i, result in enumerate(participant_results):
                 member = result['member']
                 delta = placements_with_deltas[i][2]
-                old_rating = cf_common.user_db.get_duel_rating(result['user_id']) - delta
+                old_rating = (
+                    cf_common.user_db.get_duel_rating(result['user_id']) - delta
+                )
                 new_rating = old_rating + delta
-                rating_changes.append(f'{member.mention}: {old_rating} → {new_rating} ({delta:+d})')
-            
-            embed.add_field(name='Rating Changes', value='\n'.join(rating_changes), inline=False)
-        
+                rating_changes.append(
+                    f'{member.mention}: {old_rating} → {new_rating} ({delta:+d})'
+                )
+
+            embed.add_field(
+                name='Rating Changes', value='\n'.join(rating_changes), inline=False
+            )
+
         await ctx.send(embed=embed)
-    
+
     @duel.command(brief='View multi-player duel history', usage='[@user]')
     async def multihistory(self, ctx, member: discord.Member = None):
         """View multi-player duel history for yourself or another user.
-        
+
         Shows last 10 completed multi-player duels with:
         • Placement (with medal for top 3)
         • Problems solved / total
@@ -1600,14 +1704,14 @@ class Dueling(commands.Cog):
         """
         member = member or ctx.author
         history = cf_common.user_db.get_multiplayer_duel_history(member.id)
-        
+
         if not history:
             raise DuelCogError(f'{member.mention} has no completed multi-player duels.')
-        
+
         embed = discord_common.cf_color_embed(
             title=f'Multi-Player Duel History - {member.display_name}'
         )
-        
+
         # duel tuple: (id, start_time, finish_time, num_problems, placement, problems_solved, total_time, rating_delta)
         for i, duel in enumerate(history[:10]):  # Show last 10
             placement = duel[4]
@@ -1616,17 +1720,19 @@ class Dueling(commands.Cog):
             problems_solved = duel[5]
             num_problems = duel[3]
             start_time = duel[1]
-            
-            placement_emoji = ['🥇', '🥈', '🥉'][placement - 1] if placement <= 3 else f'{placement}.'
+
+            placement_emoji = (
+                ['🥇', '🥈', '🥉'][placement - 1] if placement <= 3 else f'{placement}.'
+            )
             time_str = cf_common.pretty_time_format(total_time, always_seconds=True)
             delta_str = f' ({rating_delta:+d})' if rating_delta else ''
-            
+
             embed.add_field(
                 name=f'{placement_emoji} {cf_common.days_ago(start_time)}',
                 value=f'{problems_solved}/{num_problems} solved in {time_str}{delta_str}',
-                inline=False
+                inline=False,
             )
-        
+
         await ctx.send(embed=embed)
 
     @discord_common.send_error_if(DuelCogError, cf_common.ResolveHandleError)

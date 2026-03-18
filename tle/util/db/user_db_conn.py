@@ -134,14 +134,16 @@ class UserDbConn:
                 "nohandicap"   INTEGER DEFAULT 0
             )
         """)
-        
+
         # Add nohandicap column if it doesn't exist (migration)
         try:
-            self.conn.execute("ALTER TABLE duel ADD COLUMN nohandicap INTEGER DEFAULT 0")
+            self.conn.execute(
+                'ALTER TABLE duel ADD COLUMN nohandicap INTEGER DEFAULT 0'
+            )
             self.conn.commit()
         except:
             pass  # Column already exists
-        
+
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS "challenge" (
                 "id" INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -318,14 +320,16 @@ class UserDbConn:
                 "nohandicap"   INTEGER DEFAULT 0
             )
         """)
-        
+
         # Add nohandicap column if it doesn't exist (migration)
         try:
-            self.conn.execute("ALTER TABLE multiplayer_duel ADD COLUMN nohandicap INTEGER DEFAULT 0")
+            self.conn.execute(
+                'ALTER TABLE multiplayer_duel ADD COLUMN nohandicap INTEGER DEFAULT 0'
+            )
             self.conn.commit()
         except:
             pass  # Column already exists
-        
+
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS multiplayer_duel_participant(
                 "duel_id"         INTEGER NOT NULL,
@@ -339,7 +343,7 @@ class UserDbConn:
                 FOREIGN KEY (duel_id) REFERENCES multiplayer_duel(id)
             )
         """)
-        
+
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS multiplayer_duel_problem(
                 "duel_id"       INTEGER NOT NULL,
@@ -821,7 +825,9 @@ class UserDbConn:
         """
         return self.conn.execute(query, (userid, userid)).fetchone()
 
-    def create_duel(self, challenger, challengee, issue_time, prob, dtype, nohandicap=False):
+    def create_duel(
+        self, challenger, challengee, issue_time, prob, dtype, nohandicap=False
+    ):
         query = f"""
             INSERT INTO duel (
                 challenger, challengee, issue_time, problem_name, contest_id,
@@ -1064,8 +1070,17 @@ class UserDbConn:
         return self.conn.execute(query).fetchall()
 
     # Multi-player duel methods
-    
-    def create_multiplayer_duel(self, creator_id, guild_id, issue_time, num_problems, rating, dtype, nohandicap=False):
+
+    def create_multiplayer_duel(
+        self,
+        creator_id,
+        guild_id,
+        issue_time,
+        num_problems,
+        rating,
+        dtype,
+        nohandicap=False,
+    ):
         """Create a new multi-player duel."""
         query = f"""
             INSERT INTO multiplayer_duel (
@@ -1073,12 +1088,23 @@ class UserDbConn:
             ) VALUES (?, ?, ?, ?, ?, {Duel.PENDING}, ?, ?)
         """
         duel_id = self.conn.execute(
-            query, (creator_id, guild_id, issue_time, num_problems, rating, dtype, 1 if nohandicap else 0)
+            query,
+            (
+                creator_id,
+                guild_id,
+                issue_time,
+                num_problems,
+                rating,
+                dtype,
+                1 if nohandicap else 0,
+            ),
         ).lastrowid
         self.conn.commit()
         return duel_id
-    
-    def add_multiplayer_participant(self, duel_id, user_id, status=ParticipantStatus.INVITED):
+
+    def add_multiplayer_participant(
+        self, duel_id, user_id, status=ParticipantStatus.INVITED
+    ):
         """Add a participant to a multi-player duel."""
         query = """
             INSERT OR IGNORE INTO multiplayer_duel_participant (
@@ -1088,7 +1114,7 @@ class UserDbConn:
         rc = self.conn.execute(query, (duel_id, user_id, status)).rowcount
         self.conn.commit()
         return rc
-    
+
     def add_multiplayer_problem(self, duel_id, problem, problem_order):
         """Add a problem to a multi-player duel."""
         query = """
@@ -1097,11 +1123,12 @@ class UserDbConn:
             ) VALUES (?, ?, ?, ?, ?)
         """
         rc = self.conn.execute(
-            query, (duel_id, problem.name, problem.contestId, problem.index, problem_order)
+            query,
+            (duel_id, problem.name, problem.contestId, problem.index, problem_order),
         ).rowcount
         self.conn.commit()
         return rc
-    
+
     def check_multiplayer_duel_participant(self, user_id):
         """Check if user is in any pending or ongoing multi-player duel."""
         query = f"""
@@ -1113,7 +1140,7 @@ class UserDbConn:
             AND p.status != {ParticipantStatus.DECLINED}
         """
         return self.conn.execute(query, (user_id,)).fetchone()
-    
+
     def update_participant_status(self, duel_id, user_id, status):
         """Update a participant's status (INVITED, ACCEPTED, DECLINED)."""
         query = """
@@ -1124,7 +1151,7 @@ class UserDbConn:
         rc = self.conn.execute(query, (status, duel_id, user_id)).rowcount
         self.conn.commit()
         return rc
-    
+
     def get_multiplayer_duel(self, duel_id):
         """Get multi-player duel information."""
         query = """
@@ -1134,7 +1161,7 @@ class UserDbConn:
             WHERE id = ?
         """
         return self.conn.execute(query, (duel_id,)).fetchone()
-    
+
     def get_multiplayer_duel_by_user(self, user_id):
         """Get pending/ongoing multi-player duel for a user."""
         query = f"""
@@ -1147,7 +1174,7 @@ class UserDbConn:
             AND p.status != {ParticipantStatus.DECLINED}
         """
         return self.conn.execute(query, (user_id,)).fetchone()
-    
+
     def get_multiplayer_participants(self, duel_id):
         """Get all participants for a multi-player duel."""
         query = """
@@ -1157,7 +1184,7 @@ class UserDbConn:
             ORDER BY user_id
         """
         return self.conn.execute(query, (duel_id,)).fetchall()
-    
+
     def get_multiplayer_problems(self, duel_id):
         """Get all problems for a multi-player duel."""
         query = """
@@ -1167,7 +1194,7 @@ class UserDbConn:
             ORDER BY problem_order
         """
         return self.conn.execute(query, (duel_id,)).fetchall()
-    
+
     def check_all_accepted(self, duel_id):
         """Check if all participants have accepted the duel."""
         query = f"""
@@ -1177,7 +1204,7 @@ class UserDbConn:
         """
         pending_count = self.conn.execute(query, (duel_id,)).fetchone()[0]
         return pending_count == 0
-    
+
     def start_multiplayer_duel(self, duel_id, start_time):
         """Start a multi-player duel."""
         query = f"""
@@ -1191,19 +1218,25 @@ class UserDbConn:
             return 0
         self.conn.commit()
         return rc
-    
-    def update_participant_progress(self, duel_id, user_id, problems_solved, total_time):
+
+    def update_participant_progress(
+        self, duel_id, user_id, problems_solved, total_time
+    ):
         """Update participant's progress (problems solved and total time)."""
         query = """
             UPDATE multiplayer_duel_participant 
             SET problems_solved = ?, total_time = ?
             WHERE duel_id = ? AND user_id = ?
         """
-        rc = self.conn.execute(query, (problems_solved, total_time, duel_id, user_id)).rowcount
+        rc = self.conn.execute(
+            query, (problems_solved, total_time, duel_id, user_id)
+        ).rowcount
         self.conn.commit()
         return rc
-    
-    def complete_multiplayer_duel(self, duel_id, finish_time, placements_with_deltas, dtype):
+
+    def complete_multiplayer_duel(
+        self, duel_id, finish_time, placements_with_deltas, dtype
+    ):
         """
         Complete a multi-player duel and update ratings.
         placements_with_deltas: list of (user_id, placement, rating_delta) tuples
@@ -1218,7 +1251,7 @@ class UserDbConn:
         if rc != 1:
             self.conn.rollback()
             return 0
-        
+
         # Update participant placements and rating deltas
         for user_id, placement, rating_delta in placements_with_deltas:
             query = """
@@ -1227,14 +1260,14 @@ class UserDbConn:
                 WHERE duel_id = ? AND user_id = ?
             """
             self.conn.execute(query, (placement, rating_delta, duel_id, user_id))
-            
+
             # Update duelist rating if official
             if dtype == DuelType.OFFICIAL:
                 self.update_duel_rating(user_id, rating_delta)
-        
+
         self.conn.commit()
         return 1
-    
+
     def cancel_multiplayer_duel(self, duel_id, status):
         """Cancel a pending multi-player duel."""
         query = f"""
@@ -1248,7 +1281,7 @@ class UserDbConn:
             return 0
         self.conn.commit()
         return rc
-    
+
     def get_multiplayer_duel_history(self, user_id):
         """Get completed multi-player duels for a user."""
         query = f"""

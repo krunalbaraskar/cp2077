@@ -1,8 +1,6 @@
 import logging
 import os
 import urllib.request
-from io import BytesIO
-from zipfile import ZipFile
 
 from tle import constants
 
@@ -25,12 +23,14 @@ def _download(font_path):
     if not url:
         logger.warning(f'No download URL configured for font: {font}, skipping.')
         return False
-    
+
     logger.info(f'Downloading font `{font}` from {url}.')
     try:
         req = urllib.request.Request(
             url,
-            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+            headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            },
         )
         os.makedirs(os.path.dirname(font_path), exist_ok=True)
         with urllib.request.urlopen(req, timeout=300) as resp:
@@ -39,7 +39,9 @@ def _download(font_path):
         logger.info(f'Successfully downloaded font `{font}`.')
         return True
     except Exception as e:
-        logger.warning(f'Failed to download font `{font}`: {e}. Graphs may not render CJK characters.')
+        logger.warning(
+            f'Failed to download font `{font}`: {e}. Graphs may not render CJK characters.'
+        )
         return False
 
 

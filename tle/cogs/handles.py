@@ -614,12 +614,12 @@ class Handles(commands.Cog):
         """Creates missing roles for Codeforces ranks with correct colors."""
         created_count = 0
         existing_count = 0
-        
+
         for rank in cf.RATED_RANKS:
             role_name = rank.title
             # Check if role exists
             existing_role = discord.utils.get(ctx.guild.roles, name=role_name)
-            
+
             if existing_role:
                 existing_count += 1
             else:
@@ -628,11 +628,13 @@ class Handles(commands.Cog):
                         name=role_name,
                         color=discord.Color(rank.color_embed),
                         mentionable=True,
-                        reason="TLE Bot: Auto-creating CF rank role"
+                        reason='TLE Bot: Auto-creating CF rank role',
                     )
                     created_count += 1
                 except discord.Forbidden:
-                    await ctx.send(f'Error: I am missing "Manage Roles" permission to create role `{role_name}`.')
+                    await ctx.send(
+                        f'Error: I am missing "Manage Roles" permission to create role `{role_name}`.'
+                    )
                     return
                 except discord.HTTPException as e:
                     await ctx.send(f'Error creating role `{role_name}`: {e}')
@@ -965,9 +967,7 @@ class Handles(commands.Cog):
             (guild.get_member(user_id), handle) for user_id, handle in res
         ]
         member_handles = [
-            (member, handle)
-            for member, handle in member_handles
-            if member is not None
+            (member, handle) for member, handle in member_handles if member is not None
         ]
         if not member_handles:
             raise HandleCogError('No members with registered handles found.')
@@ -1012,7 +1012,7 @@ class Handles(commands.Cog):
 
         # 6. Compute deltas, update roles, and build output
         delta_entries = []  # (member, handle, old_rating, new_rating, delta)
-        rank_changes = []   # (member, handle, old_rank_str, new_rank_str)
+        rank_changes = []  # (member, handle, old_rank_str, new_rank_str)
         roles_updated = 0
 
         for member, user in zip(members, new_users, strict=False):
@@ -1078,9 +1078,7 @@ class Handles(commands.Cog):
             delta_lines.append(line)
 
         if delta_lines:
-            for chunk in paginator.chunkify(
-                delta_lines, _MAX_RATING_CHANGES_PER_EMBED
-            ):
+            for chunk in paginator.chunkify(delta_lines, _MAX_RATING_CHANGES_PER_EMBED):
                 embed = discord.Embed(description='\n'.join(chunk))
                 embed.set_author(name='Rating Deltas')
                 embeds.append(embed)
@@ -1099,9 +1097,7 @@ class Handles(commands.Cog):
                     f' {old_rank_str} \N{LONG RIGHTWARDS ARROW} {new_rank_str}'
                 )
                 rank_lines.append(line)
-            for chunk in paginator.chunkify(
-                rank_lines, _MAX_RATING_CHANGES_PER_EMBED
-            ):
+            for chunk in paginator.chunkify(rank_lines, _MAX_RATING_CHANGES_PER_EMBED):
                 embed = discord.Embed(description='\n'.join(chunk))
                 embed.set_author(name='🏅 Rank Changes')
                 embeds.append(embed)

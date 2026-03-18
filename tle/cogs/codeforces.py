@@ -93,9 +93,11 @@ class Codeforces(commands.Cog):
             raise CodeforcesCogError('Problems not found within the search parameters')
 
         problems.sort(
-            key=lambda problem: cf_common.cache2.contest_cache.get_contest(
-                problem.contestId
-            ).startTimeSeconds,
+            key=lambda problem: (
+                cf_common.cache2.contest_cache.get_contest(
+                    problem.contestId
+                ).startTimeSeconds
+            ),
             reverse=True,
         )
 
@@ -139,9 +141,11 @@ class Codeforces(commands.Cog):
             raise CodeforcesCogError('Problems not found within the search parameters')
 
         problems.sort(
-            key=lambda problem: cf_common.cache2.contest_cache.get_contest(
-                problem.contestId
-            ).startTimeSeconds
+            key=lambda problem: (
+                cf_common.cache2.contest_cache.get_contest(
+                    problem.contestId
+                ).startTimeSeconds
+            )
         )
 
         choice = max([random.randrange(len(problems)) for _ in range(2)])
@@ -248,9 +252,11 @@ class Codeforces(commands.Cog):
             raise CodeforcesCogError('Problems not found within the search parameters')
 
         problems.sort(
-            key=lambda problem: cf_common.cache2.contest_cache.get_contest(
-                problem.contestId
-            ).startTimeSeconds
+            key=lambda problem: (
+                cf_common.cache2.contest_cache.get_contest(
+                    problem.contestId
+                ).startTimeSeconds
+            )
         )
 
         choices = []
@@ -308,9 +314,11 @@ class Codeforces(commands.Cog):
             raise CodeforcesCogError('No problem to assign')
 
         problems.sort(
-            key=lambda problem: cf_common.cache2.contest_cache.get_contest(
-                problem.contestId
-            ).startTimeSeconds
+            key=lambda problem: (
+                cf_common.cache2.contest_cache.get_contest(
+                    problem.contestId
+                ).startTimeSeconds
+            )
         )
 
         choice = max(random.randrange(len(problems)) for _ in range(2))

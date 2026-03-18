@@ -50,7 +50,8 @@ async def initialize(nodb):
     else:
         # Check if using Supabase (doesn't need file path)
         import os
-        if os.environ.get("SUPABASE_URL") and os.environ.get("SUPABASE_KEY"):
+
+        if os.environ.get('SUPABASE_URL') and os.environ.get('SUPABASE_KEY'):
             user_db = db.UserDbConn()  # Supabase version, no file needed
         else:
             user_db = db.UserDbConn(constants.USER_DB_FILE_PATH)  # SQLite version
