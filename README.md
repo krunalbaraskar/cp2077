@@ -47,11 +47,15 @@ cd TLE
 # 2 · create a config file
 cp .env.example .env          # then edit BOT_TOKEN, LOGGING_COG_CHANNEL_ID …
 
-# 3 · build & start the bot (first run takes ~2 min)
+# 3 · install dependencies and start the bot natively
+pip install -r requirements.txt
+python app.py
+
+# OR, run using Docker (first run takes ~2 min)
 docker compose up -d
 ```
 
-That’s it.  
+That’s it. `app.py` will automatically load your `.env` file.  
 The bot will appear online in your Discord server; use
 `;help` inside Discord to explore commands.
 
@@ -95,10 +99,13 @@ it only means the bot will re-download items on first run.
 
 ## 5 · Local development (optional)
 
-You can hack on the code without touching your system Python:
+You can hack on the code without touching your system Python using Docker, or run it natively if you have dependencies installed:
 
 ```bash
-# live-reload dev run (blocks & shows logs)
+# run natively simply by executing app.py (Make sure to pip install first)
+python app.py
+
+# OR live-reload dev run via Docker (blocks & shows logs)
 docker compose up --build
 ```
 
