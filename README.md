@@ -41,8 +41,8 @@ everything.
 
 ```bash
 # 1 · clone the repo
-git clone https://github.com/cheran-senthil/TLE
-cd TLE
+git clone https://github.com/krunalbaraskar/cp2077
+cd cp2077
 
 # 2 · create a config file
 cp .env.example .env          # then edit BOT_TOKEN, LOGGING_COG_CHANNEL_ID …
