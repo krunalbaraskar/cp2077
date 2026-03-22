@@ -21,10 +21,10 @@ ENV FONTCONFIG_FILE=/bot/extra/fonts.conf
 ENV PYTHONUNBUFFERED=1
 
 WORKDIR /bot
-COPY --chown=user:user pyproject.toml .
+COPY --chown=user:user pyproject.toml requirements.txt ./
 
 # Install dependencies using system pip
-RUN /usr/bin/python3 -m pip install --break-system-packages --no-cache-dir .
+RUN /usr/bin/python3 -m pip install --break-system-packages --no-cache-dir -r requirements.txt .
 
 COPY --chown=user:user . .
 
